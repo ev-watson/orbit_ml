@@ -98,14 +98,22 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     if not suppress:
         print_block("BEGINNING RANDOM GNN TESTING", err=err)
 
-    s = config.SEQUENCE_LENGTH
     targets = np.load('gnn_targets.npy')
-    idx = np.random.randint(len(targets) - s + 1, size=ntrials)
-    sampled = np.array([targets[i:i+s] for i in idx])   # shape [ntrials, s, f]
-    input_data = sampled[..., :-3]
-    a_target = sampled[..., -3:]
+    inp_slice = config.retrieve('model').input_slice
+    targ_slice = config.retrieve('model').output_slice
+    ntargs = len(range(*targ_slice.indices(10)))
+    if config.WINDOWED:
+        s = config.SEQUENCE_LENGTH
+        idx = np.random.randint(len(targets) - s + 1, size=ntrials)
+        sampled = np.array([targets[i:i+s] for i in idx])   # shape [ntrials, s, f]
+        pred_vals = np.empty((ntrials, s, ntargs))
+    else:
+        idx = np.random.randint(len(targets) - 1, size=ntrials)
+        sampled = np.array([targets[i] for i in idx])
+        pred_vals = np.empty((ntrials, ntargs))
 
-    pred_vals = np.empty((ntrials, s, 3))
+    input_data = sampled[..., inp_slice]
+    a_target = sampled[..., targ_slice]
 
     # Finds closest power of 2 that will make batch_size and num_batches as even as possible
     batch_size = config.BATCH_SIZE if config.BATCH_SIZE and config.BATCH_SIZE < ntrials else 2 ** round(np.log2(np.sqrt(ntrials)))

@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 
 
-@njit(parallel=True, fastmath=True)
+@njit(fastmath=True)
 def socfdw(x, dt=1.0):
     """
     Sixth-order central difference for windowed arrays with shape [N, s, f],

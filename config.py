@@ -20,7 +20,7 @@ DROP_RATE = 0.136
 BATCH_SIZE = 128
 SEQUENCE_LENGTH = 200   # EXPONENTIALLY AFFECTS TIME, S=200 takes around 2.5 minutes to run
 
-NUM_SAMPLES = 30000  # None for all available
+NUM_SAMPLES = 100000  # None for all available
 STEP = 1
 WINDOWED = False
 NUM_WORKERS = 6
@@ -31,7 +31,7 @@ SCALE = True
 LOG_ATTN = False
 ON_STEP = False
 
-GINPUTS_FILE = 'ginputs.npy'
+GINPUTS_FILE = 'gnn_targets.npy'
 INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'

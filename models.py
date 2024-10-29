@@ -15,7 +15,7 @@ class BaseArch(LightningModule):
         super().__init__()
         self.lr = kwargs.get('max_lr', config.LEARNING_RATE)
         self.activation = kwargs.get('activation', F.hardswish)
-        self.loss = kwargs.get('loss', F.l1_loss)
+        self.loss = kwargs.get('loss', F.mse_loss)
         self.optimizer = kwargs.get('optimizer', torch.optim.AdamW)
         self.scheduler = kwargs.get('scheduler', torch.optim.lr_scheduler.ReduceLROnPlateau)
         self.loss_kwargs = {'reduction': 'mean'}

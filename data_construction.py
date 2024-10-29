@@ -60,8 +60,6 @@ class NNDataModule(LightningDataModule):
 
         self.input_slice = config.retrieve('model').input_slice
         self.target_slice = config.retrieve('model').output_slice
-        self.inp_idx = (slice(None), self.input_slice)
-        self.out_idx = (slice(None), self.target_slice)
 
         if config.TYPE == 'gnn' and config.WINDOWED:
             self.S = config.SEQUENCE_LENGTH
@@ -72,12 +70,6 @@ class NNDataModule(LightningDataModule):
             if config.ROTATIONAL_EQUIVARIANCE:
                 self.features = self.windowed_rotation(self.features)
 
-            self.inp_idx = (slice(None), slice(None), self.input_slice)
-            self.out_idx = (slice(None), slice(None), self.target_slice)
-
-        elif config.TYPE == 'gnn' and config.ROTATIONAL_EQUIVARIANCE:
-            self.features = self.rot_eqv(self.features)
-
         total_windows = self.features.shape[0]
         train_size = int(0.8 * total_windows)
         val_size = int(0.1 * total_windows)
@@ -85,8 +77,8 @@ class NNDataModule(LightningDataModule):
         if config.SCALE:
             self.input_scaler = Scaler()
             self.target_scaler = Scaler()
-            self.inputs = self.input_scaler.fit_transform(self.features[self.inp_idx])
-            self.targets = self.target_scaler.fit_transform(self.features[self.out_idx])
+            self.inputs = self.input_scaler.fit_transform(self.features[..., self.input_slice])
+            self.targets = self.target_scaler.fit_transform(self.features[..., self.target_slice])
 
             self.train_inputs = self.inputs[:train_size]
             self.val_inputs = self.inputs[train_size:train_size + val_size]
@@ -114,19 +106,6 @@ class NNDataModule(LightningDataModule):
         self.train_dataset = self.dataset(self.train_features)
         self.val_dataset = self.dataset(self.val_features)
         self.test_dataset = self.dataset(self.test_features)
-
-    @staticmethod
-    def rot_eqv(data):
-        x = data[:, :3]
-        cart = sph_to_cart(x)
-        R = Rot.random(x.shape[0]).as_matrix()
-        rotated = np.einsum('nij,nj->ni', R, cart)
-        sph = cart_to_sph(rotated)
-
-        v = sixth_order_central_difference(sph)
-        y = sixth_order_central_difference(v)
-
-        return np.concatenate((sph, v, y), axis=-1)
 
     @staticmethod
     def windowed_rotation(windowed_data):
