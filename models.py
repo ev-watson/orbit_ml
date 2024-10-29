@@ -64,7 +64,6 @@ class BaseArch(LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": self.s_config}
 
 
-@config.register('gnn')
 class MLP(BaseArch):
     input_slice = slice(None, 6)
     output_slice = slice(6, 7)
@@ -90,7 +89,7 @@ class MLP(BaseArch):
         return x
 
 
-#@config.register('gnn')
+@config.register('gnn')
 class GNN(BaseArch, PredictorMixin):
     input_slice = slice(None, 6)
     output_slice = slice(6, 7)

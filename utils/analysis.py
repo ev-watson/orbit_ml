@@ -108,8 +108,8 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     pred_vals = np.empty((ntrials, s, 3))
 
     # Finds closest power of 2 that will make batch_size and num_batches as even as possible
-    batch_size = config.BATCH_SIZE if config.BATCH_SIZE else 2 ** round(np.log2(np.sqrt(ntrials)))
-    num_batches = np.ceil(ntrials / batch_size)
+    batch_size = config.BATCH_SIZE if config.BATCH_SIZE and config.BATCH_SIZE < ntrials else 2 ** round(np.log2(np.sqrt(ntrials)))
+    num_batches = int(np.ceil(ntrials / batch_size))
     if not suppress:
         print_block(f"{ntrials} TRIALS, {num_batches} BATCHES of {batch_size} SIZE", err=err)
     for batch_num in range(num_batches):
@@ -117,7 +117,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         end_idx = min(start_idx + batch_size, ntrials)
         batch_input = input_data[start_idx:end_idx]
         batch_pred = model.predict(batch_input)
-        pred_vals[start_idx:end_idx] = batch_pred if config.SCALE else batch_pred.cpu()
+        pred_vals[start_idx:end_idx] = batch_pred.cpu() if config.SCALE else batch_pred
 
     if SR:
         return input_data, pred_vals

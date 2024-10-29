@@ -20,8 +20,9 @@ DROP_RATE = 0.136
 BATCH_SIZE = 128
 SEQUENCE_LENGTH = 200   # EXPONENTIALLY AFFECTS TIME, S=200 takes around 2.5 minutes to run
 
-NUM_SAMPLES = None  # None for all available
+NUM_SAMPLES = 30000  # None for all available
 STEP = 1
+WINDOWED = False
 NUM_WORKERS = 6
 PREFETCH_FACTOR = 3
 PIN_MEMORY = True

@@ -3,7 +3,7 @@ from numba import njit, prange
 
 
 @njit(parallel=True, fastmath=True)
-def socfdw(x, dt=1.0, dtype=np.float64):
+def socfdw(x, dt=1.0):
     """
     Sixth-order central difference for windowed arrays with shape [N, s, f],
     utilizing Numba for acceleration. End points are treated with special stencils
@@ -14,7 +14,6 @@ def socfdw(x, dt=1.0, dtype=np.float64):
               f = number of features,
               s = sequence length.
     :param dt: float, time step. Default is 1.0.
-    :param dtype: np.dtype to use.
     :return: np.ndarray of shape (N, s, f), representing the numerical derivative dx/dt.
     """
     N, s, f = x.shape
@@ -23,20 +22,20 @@ def socfdw(x, dt=1.0, dtype=np.float64):
         raise ValueError("Sequence length must be at least 7 for sixth-order central difference.")
 
     # Initialize the output array with zeros
-    dxdt = np.zeros((N, s, f), dtype=dtype)
+    dxdt = np.zeros_like(x)
 
     # Central difference coefficient
     central_coeff = 1.0 / (60.0 * dt)
 
     # Define forward coefficients for boundary points (seq=0,1,2)
-    forward_coeff_first = np.array([-147.0, 360.0, -450.0, 400.0, -225.0, 72.0, -10.0], dtype=dtype) * central_coeff
-    forward_coeff_second = np.array([-10.0, -77.0, 150.0, -100.0, 50.0, -15.0, 2.0], dtype=dtype) * central_coeff
-    forward_coeff_third = np.array([2.0, -24.0, -35.0, 80.0, -30.0, 8.0, -1.0], dtype=dtype) * central_coeff
+    forward_coeff_first = np.array([-147.0, 360.0, -450.0, 400.0, -225.0, 72.0, -10.0]) * central_coeff
+    forward_coeff_second = np.array([-10.0, -77.0, 150.0, -100.0, 50.0, -15.0, 2.0]) * central_coeff
+    forward_coeff_third = np.array([2.0, -24.0, -35.0, 80.0, -30.0, 8.0, -1.0]) * central_coeff
 
     # Define backward coefficients for boundary points (seq=s-3, s-2, s-1)
-    backward_coeff_third_last = np.array([1.0, -8.0, 30.0, -80.0, 35.0, 24.0, -2.0], dtype=dtype) * central_coeff
-    backward_coeff_second_last = np.array([-2.0, 15.0, -50.0, 100.0, -150.0, 77.0, 10.0], dtype=dtype) * central_coeff
-    backward_coeff_last = np.array([10.0, -72.0, 225.0, -400.0, 450.0, -360.0, 147.0], dtype=dtype) * central_coeff
+    backward_coeff_third_last = np.array([1.0, -8.0, 30.0, -80.0, 35.0, 24.0, -2.0]) * central_coeff
+    backward_coeff_second_last = np.array([-2.0, 15.0, -50.0, 100.0, -150.0, 77.0, 10.0]) * central_coeff
+    backward_coeff_last = np.array([10.0, -72.0, 225.0, -400.0, 450.0, -360.0, 147.0]) * central_coeff
 
     for n in prange(N):
         for feat in range(f):
@@ -113,7 +112,7 @@ def socfdw(x, dt=1.0, dtype=np.float64):
     return dxdt
 
 
-@njit
+@njit(parallel=True, fastmath=True)
 def sixth_order_central_difference(x, dt):
     """
     Sixth order central difference, with end points being treated with special stencils to 6th order accuracy.

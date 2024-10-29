@@ -10,51 +10,99 @@ import config
 
 class Scaler:
     def __init__(self):
-        self.mean = None
-        self.std = None
+        self.mean = None  # Mean per feature
+        self.std = None  # Standard deviation per feature
+        self.axes = None  # Axes along which mean and std were computed
+        self.is_fitted = False  # Flag to check if scaler has been fitted
 
-    def fit_transform(self, data):
-        if data.ndim != 3:
-            raise ValueError("Data must be a 3D array with shape (N, S, F).")
+    def fit_transform(self, data: np.ndarray) -> np.ndarray:
+        """
+        Fits the scaler to the data and transforms it.
+        :param data: np.ndarray, input data of shape [N, F] or [N, S, F]
+        :return: np.ndarray, scaled data with the same shape as input
+        """
+        if not isinstance(data, np.ndarray):
+            raise TypeError("Input data must be a NumPy array.")
 
-        self.mean = data.mean(axis=(0, 1))
-        self.std = data.std(axis=(0, 1)) + 1e-12
+        if data.ndim == 3:
+            self.axes = (0, 1)  # Compute mean/std over N and S
+        elif data.ndim == 2:
+            self.axes = (0,)  # Compute mean/std over N
+        else:
+            raise ValueError("Data must be either 2D [N, F] or 3D [N, S, F].")
 
-        mean_reshaped = self.mean.reshape(1, 1, -1)
-        std_reshaped = self.std.reshape(1, 1, -1)
+        self.mean = data.mean(axis=self.axes)
+        self.std = data.std(axis=self.axes) + 1e-12  # Add epsilon to avoid division by zero
+
+        if data.ndim == 3:
+            mean_reshaped = self.mean.reshape(1, 1, -1)  # Shape: [1, 1, F]
+            std_reshaped = self.std.reshape(1, 1, -1)  # Shape: [1, 1, F]
+        elif data.ndim == 2:
+            mean_reshaped = self.mean.reshape(1, -1)  # Shape: [1, F]
+            std_reshaped = self.std.reshape(1, -1)  # Shape: [1, F]
 
         scaled_data = (data - mean_reshaped) / std_reshaped
+        self.is_fitted = True
         return scaled_data
 
-    def transform(self, tensor):
-        if self.mean is None or self.std is None:
+    def transform(self, tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Transforms a PyTorch tensor using the fitted scaler.
+        :param tensor: torch.Tensor, input tensor of shape [N, F] or [N, S, F]
+        :return: torch.Tensor, scaled tensor with the same shape as input
+        """
+        if not self.is_fitted:
             raise RuntimeError("Scaler has not been fitted yet.")
+
         if not isinstance(tensor, torch.Tensor):
             raise TypeError("Input must be a PyTorch tensor.")
-        if tensor.ndim != 3:
-            raise ValueError("Input tensor must be 3D with shape [N, S, F].")
+
+        if tensor.ndim == 3 and self.axes != (0, 1):
+            raise ValueError("Scaler was fitted on 2D data, but received 3D tensor.")
+        if tensor.ndim == 2 and self.axes != (0,):
+            raise ValueError("Scaler was fitted on 3D data, but received 2D tensor.")
 
         mean = torch.from_numpy(self.mean).to(tensor.device)
         std = torch.from_numpy(self.std).to(tensor.device)
-        mean = mean.view(1, 1, -1)
-        std = std.view(1, 1, -1)
+
+        if tensor.ndim == 3:
+            mean = mean.view(1, 1, -1)  # Shape: [1, 1, F]
+            std = std.view(1, 1, -1)  # Shape: [1, 1, F]
+        elif tensor.ndim == 2:
+            mean = mean.view(1, -1)  # Shape: [1, F]
+            std = std.view(1, -1)  # Shape: [1, F]
 
         scaled_tensor = (tensor - mean) / std
         return scaled_tensor
 
-    def inverse_transform(self, scaled_tensor):
-        if self.mean is None or self.std is None:
+    def inverse_transform(self, scaled_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Reverts the scaling of a PyTorch tensor using the fitted scaler.
+        :param scaled_tensor: torch.Tensor, scaled tensor of shape [N, F] or [N, S, F]
+        :return: torch.Tensor, original tensor before scaling
+        """
+        if not self.is_fitted:
             raise RuntimeError("Scaler has not been fitted yet.")
+
         if not isinstance(scaled_tensor, torch.Tensor):
             raise TypeError("Input must be a PyTorch tensor.")
-        if scaled_tensor.ndim != 3:
-            raise ValueError("Input tensor must be 3D with shape [N, S, F].")
+
+        if scaled_tensor.ndim == 3 and self.axes != (0, 1):
+            raise ValueError("Scaler was fitted on 2D data, but received 3D tensor.")
+        if scaled_tensor.ndim == 2 and self.axes != (0,):
+            raise ValueError("Scaler was fitted on 3D data, but received 2D tensor.")
 
         mean = torch.from_numpy(self.mean).to(scaled_tensor.device)
         std = torch.from_numpy(self.std).to(scaled_tensor.device)
-        mean = mean.view(1, 1, -1)
-        std = std.view(1, 1, -1)
 
+        if scaled_tensor.ndim == 3:
+            mean = mean.view(1, 1, -1)  # Shape: [1, 1, F]
+            std = std.view(1, 1, -1)  # Shape: [1, 1, F]
+        elif scaled_tensor.ndim == 2:
+            mean = mean.view(1, -1)  # Shape: [1, F]
+            std = std.view(1, -1)  # Shape: [1, F]
+
+        # Revert the scaling
         original_tensor = scaled_tensor * std + mean
         return original_tensor
 

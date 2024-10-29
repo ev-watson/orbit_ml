@@ -21,7 +21,7 @@ def print_block(phrase, err=False):
     :return: None
     """
     padding = 6
-    block_width = len(phrase) + padding * 2 + 2
+    block_width = min(len(phrase) + padding * 2 + 2, 100)
 
     if err:
         print_func = print_err
