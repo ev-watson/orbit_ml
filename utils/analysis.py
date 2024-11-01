@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 import config
 from utils.logging_utils import print_block
@@ -37,18 +38,21 @@ def print_analysis(g, t, ntrials, mape, suppress, err, verbose, axis=None):
     """
     Helper function for random tests
     """
-    mae = calc_mae(g, t, axis=axis)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    guess = torch.from_numpy(g).float().to(device)
+    target = torch.from_numpy(t).float().to(device)
+    mae = calc_mae(guess, target, axis=axis)
     if not suppress:
         print_block(f"RANDOM INPUT TESTING TRIALS: {ntrials}", err=err)
         print_block(f"MAE: {mae}", err=err)
         if verbose:
             print_block("PREDICTIONS:", err=err)
-            print(g)
+            print(guess)
             print_block("TARGETS:", err=err)
-            print(t)
+            print(target)
 
     if mape:
-        mape_val = calc_mape(g, t, axis=axis)
+        mape_val = calc_mape(guess, target, axis=axis)
         if not suppress:
             print_block(f"MAPE: {mape_val}%", err=err)
         return mae, mape_val
@@ -105,7 +109,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     if config.WINDOWED:
         s = config.SEQUENCE_LENGTH
         idx = np.random.randint(len(targets) - s + 1, size=ntrials)
-        sampled = np.array([targets[i:i+s] for i in idx])   # shape [ntrials, s, f]
+        sampled = np.array([targets[i:i + s] for i in idx])  # shape [ntrials, s, f]
         pred_vals = np.empty((ntrials, s, ntargs))
     else:
         idx = np.random.randint(len(targets) - 1, size=ntrials)
@@ -125,7 +129,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         end_idx = min(start_idx + batch_size, ntrials)
         batch_input = input_data[start_idx:end_idx]
         batch_pred = model.predict(batch_input)
-        pred_vals[start_idx:end_idx] = batch_pred.cpu() if config.SCALE else batch_pred
+        pred_vals[start_idx:end_idx] = batch_pred.cpu()
 
     if SR:
         return input_data, pred_vals

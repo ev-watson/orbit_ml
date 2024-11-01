@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 
@@ -30,23 +29,23 @@ def mape_loss(g, t, reduction='mean'):
         raise NotImplementedError('Only mean reduction is supported.')
 
 
-def calc_mae(g, t, axis=None):
+def calc_mae(g: torch.Tensor, t: torch.Tensor, axis=None) -> torch.Tensor:
     """
     mae
-    :param g: array-like, guess
-    :param t: array-like, target
-    :param axis: int, axis along which to calculate MAE, None for entire mean
-    :return: mae of guess from target
+    :param g: torch.Tensor, guess
+    :param t: torch.Tensor, target
+    :param axis: int, dimension along which to calculate MAE, None for entire mean
+    :return: torch.Tensor, mae of guess from target
     """
-    return np.mean(np.abs(t - g), axis=axis)
+    return torch.mean(torch.abs(t - g), dim=axis)
 
 
-def calc_mape(g, t, axis=None):
+def calc_mape(g: torch.Tensor, t: torch.Tensor, axis=None) -> torch.Tensor:
     """
     mape
-    :param g: array-like, guess
-    :param t: array-like, target
-    :param axis: int, axis along which to calculate MAE, None for entire mean
-    :return: mape of guess from target
+    :param g: torch.Tensor, guess
+    :param t: torch.Tensor, target
+    :param axis: int, dimension along which to calculate MAPE, None for entire mean
+    :return: torch.Tensor, mape of guess from target
     """
-    return np.mean(np.abs((t - g) / t), axis=axis) * 100
+    return torch.mean(torch.abs((t - g) / t), dim=axis) * 100

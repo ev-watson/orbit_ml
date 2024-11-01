@@ -11,20 +11,20 @@ USE_BN = False
 USE_SE = False
 REDUCTION = 2
 
-MAX_EPOCHS = 25
+MAX_EPOCHS = 20
 ENABLE_EARLY_STOPPING = True
 PATIENCE = 6
 GRADIENT_CLIP_VAL = 1.2
 WEIGHT_DECAY = 3e-5
 DROP_RATE = 0.136
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
 
 NUM_SAMPLES = 100000  # None for all available
 STEP = 1
 WINDOWED = True
-NUM_WORKERS = 6
-PREFETCH_FACTOR = 3
+NUM_WORKERS = 8
+PREFETCH_FACTOR = 4
 PIN_MEMORY = True
 SCALE = True
 
@@ -36,7 +36,7 @@ INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'
 
-MAC = True
+MAC = False
 if MAC:
     NUM_WORKERS = 0
     PREFETCH_FACTOR = None

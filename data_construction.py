@@ -1,11 +1,8 @@
-import os
-
-import numpy as np
+import joblib
 from lightning.pytorch import LightningDataModule
 from scipy.spatial.transform import Rotation as Rot
 from torch.utils.data import DataLoader, Dataset
 
-import config
 from models import *
 
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
@@ -30,7 +27,7 @@ class InterpolationDataset(Dataset):
 class GNNDataset(Dataset):
     def __init__(self, features):
         super().__init__()
-        self.features = features    # [N, S, F]
+        self.features = features  # [N, S, F]
         self.input_slice = config.retrieve('model').input_slice
         self.target_slice = config.retrieve('model').output_slice
         self.windowed = config.WINDOWED
@@ -63,7 +60,7 @@ class NNDataModule(LightningDataModule):
             self.features = np.lib.stride_tricks.sliding_window_view(self.features,
                                                                      window_shape=int(self.S),
                                                                      axis=0)  # Shape [N-S+1, F, S]
-            self.features = self.features.transpose(0, 2, 1)    # [[N-S+1, S, F]
+            self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
             if config.ROTATIONAL_EQUIVARIANCE:
                 self.features = self.windowed_rotation(self.features)
 

@@ -111,24 +111,26 @@ def objective(trial):
     clear_local_ckpt_files()
 
     params = {
-        'lr': trial.suggest_float('lr', 1e-8, 1e-1, log=True),
-        # 'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
-        # 'num_layers': trial.suggest_int('num_layers', 2, 5),
+        'lr': trial.suggest_float('lr', 1e-7, 1e-2, log=True),
+        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
+        'num_layers': trial.suggest_int('num_layers', 2, 5),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
         'drop_rate': trial.suggest_float('drop_rate', 0.1, 0.7),
         # 'se_block': trial.suggest_categorical('se_block', [True, False]),
         # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
-        # 'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
-        'activation_name': 'hardswish',
-        # 'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
-        'loss_name': 'l1',
-        # 'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
+        'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
+        # 'activation_name': 'hardswish',
+        'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
+        # 'loss_name': 'l1',
+        'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
+        'seqlen': trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300]),
     }
+    config.SEQUENCE_LENGTH = params['seqlen']
 
     params['loss'] = loss_functions[params['loss_name']]
     params['scheduler_kwargs'] = {
-        'factor': trial.suggest_float('scheduler_factor', 0.01, .5),
+        'factor': trial.suggest_float('scheduler_factor', 0.05, .5),
         'patience': 3,
     }
 
@@ -169,13 +171,13 @@ def objective(trial):
 
     trainer.fit(model, datamodule=data_module)
 
-    rtrials = 2000
+    rtrials = 50000
     if args.model == 'interp':
         mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
     else:
-        mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=0)
+        mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
 
-    return list(mae)
+    return mae
 
 
 sampler = optuna.samplers.NSGAIISampler(
@@ -184,9 +186,9 @@ sampler = optuna.samplers.NSGAIISampler(
 )
 study_name = f"{args.model}_{args.opt}_study"
 storage_name = f"sqlite:///{study_name}.db"
-study = optuna.create_study(directions=['minimize'] * 3,
+study = optuna.create_study(direction='minimize',
+                            storage=storage_name,
                             sampler=sampler,
                             study_name=study_name,
-                            storage=storage_name,
                             load_if_exists=True)
 study.optimize(objective, n_trials=5000)
