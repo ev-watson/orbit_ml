@@ -43,9 +43,9 @@ optimizer_functions = {
 }
 
 base_opt_kwargs = {
-    'betas1': {'type': 'float', 'low': 0.9, 'high': 0.99},  # Log inherently included in sample function in utils
+    'betas1': {'type': 'float', 'low': 0.9, 'high': 0.99},  # Log inherently included in sampler function in utils
     'betas2': {'type': 'float', 'low': 0.99, 'high': 0.9999},
-    'eps': {'type': 'float', 'default': 1e-15},
+    'eps': {'type': 'float', 'default': 1e-10},
     'weight_decay': {'type': 'float', 'low': 1e-8, 'high': 1e-2, 'log': True},
 }
 
@@ -103,11 +103,7 @@ parser.add_argument("--model", '-m', type=str, default='gnn',
                     choices=model_choices,
                     help=f"Model to run. Defaults to gnn")
 args = parser.parse_args()
-
 config.TYPE = args.model
-
-
-# data_module = NNDataModule()
 
 
 def objective(trial):
@@ -115,35 +111,26 @@ def objective(trial):
     clear_local_ckpt_files()
 
     params = {
-        'max_lr': trial.suggest_float('max_lr', 1e-3, 1e-1),
-        'hidden_dim': 64,
+        'lr': trial.suggest_float('lr', 1e-8, 1e-1, log=True),
         # 'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
-        'num_layers': 3,
         # 'num_layers': trial.suggest_int('num_layers', 2, 5),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
         'drop_rate': trial.suggest_float('drop_rate', 0.1, 0.7),
-        'se_block': trial.suggest_categorical('se_block', [True, False]),
-        'gradient_clip_val': trial.suggest_float('gradient_clip_val', 1e-2, 1.5),
+        # 'se_block': trial.suggest_categorical('se_block', [True, False]),
+        # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
+        # 'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
         'activation_name': 'hardswish',
         # 'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
-        'loss_name': 'smooth_l1',
+        'loss_name': 'l1',
         # 'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
-        'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
     }
-
-    config.ROTATIONAL_EQUIVARIANCE = params['rotational_equivariance']
 
     params['loss'] = loss_functions[params['loss_name']]
     params['scheduler_kwargs'] = {
-        'total_steps': trial.suggest_int('total_steps', 1e3, 1e4),
-        'pct_start': trial.suggest_float('pct_start', 0.1, 0.5),
-        'div_factor': trial.suggest_float('div_factor', 1e1, 1e3),
-        'final_div_factor': trial.suggest_float('final_div_factor', 1e4, 1e6),
-        'three_phase': trial.suggest_categorical('three_phase', [True, False]),
+        'factor': trial.suggest_float('scheduler_factor', 0.01, .5),
+        'patience': 3,
     }
-
-    params['batch_norm'] = trial.suggest_categorical('batch_norm', [True, False])
 
     data_module = NNDataModule()
 
@@ -168,7 +155,7 @@ def objective(trial):
 
     trainer = Trainer(
         max_epochs=config.MAX_EPOCHS,
-        gradient_clip_val=params['gradient_clip_val'],
+        gradient_clip_val=params.get('gradient_clip_val', config.GRADIENT_CLIP_VAL),
         callbacks=[EarlyStopping(monitor='val_loss', patience=config.PATIENCE, mode='min'),
                    GradientNormCallback()],
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGUSR1)] if not config.MAC else None,
@@ -182,7 +169,7 @@ def objective(trial):
 
     trainer.fit(model, datamodule=data_module)
 
-    rtrials = 250000
+    rtrials = 2000
     if args.model == 'interp':
         mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
     else:
@@ -192,7 +179,7 @@ def objective(trial):
 
 
 sampler = optuna.samplers.NSGAIISampler(
-    population_size=100,
+    population_size=50,
     seed=config.SEED,
 )
 study_name = f"{args.model}_{args.opt}_study"

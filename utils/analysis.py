@@ -101,7 +101,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     targets = np.load('gnn_targets.npy')
     inp_slice = config.retrieve('model').input_slice
     targ_slice = config.retrieve('model').output_slice
-    ntargs = len(range(*targ_slice.indices(10)))
+    ntargs = config.retrieve('model').output_dim
     if config.WINDOWED:
         s = config.SEQUENCE_LENGTH
         idx = np.random.randint(len(targets) - s + 1, size=ntrials)

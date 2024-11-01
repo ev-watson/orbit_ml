@@ -1,10 +1,8 @@
-import joblib
 import numpy as np
 import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 from torch import nn
 
-import config
 from utils import *
 
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
@@ -13,12 +11,12 @@ torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_
 class BaseArch(LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
-        self.lr = kwargs.get('max_lr', config.LEARNING_RATE)
+        self.lr = kwargs.get('lr', config.LEARNING_RATE)
         self.activation = kwargs.get('activation', F.hardswish)
-        self.loss = kwargs.get('loss', F.mse_loss)
+        self.loss = kwargs.get('loss', F.l1_loss)
         self.optimizer = kwargs.get('optimizer', torch.optim.AdamW)
         self.scheduler = kwargs.get('scheduler', torch.optim.lr_scheduler.ReduceLROnPlateau)
-        self.loss_kwargs = {'reduction': 'mean'}
+        self.loss_kwargs = {}
         self.loss_kwargs.update(kwargs.get('loss_kwargs', {}))
         self.optimizer_kwargs = {'params': self.parameters(), 'lr': self.lr, 'weight_decay': config.WEIGHT_DECAY}
         self.optimizer_kwargs.update(kwargs.get('optimizer_kwargs', {}))
@@ -93,11 +91,13 @@ class MLP(BaseArch):
 class GNN(BaseArch, PredictorMixin):
     input_slice = slice(None, 6)
     output_slice = slice(6, 7)
+    input_dim = len(range(*input_slice.indices(10)))
+    output_dim = len(range(*output_slice.indices(10)))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.input_dim = kwargs.get('input_dim', 6)
-        self.output_dim = kwargs.get('output_dim', 1)
+        self.input_dim = kwargs.get('input_dim', self.input_dim)
+        self.output_dim = kwargs.get('output_dim', self.output_dim)
         self.hidden_dim = kwargs.get('hidden_dim', config.HIDDEN_DIM)
         self.num_layers = kwargs.get('num_layers', config.NUM_LAYERS)
         self.drop_rate = kwargs.get('drop_rate', config.DROP_RATE)
