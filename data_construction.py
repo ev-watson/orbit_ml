@@ -55,9 +55,6 @@ class NNDataModule(LightningDataModule):
         self.batch_size = batch_size if batch_size else config.BATCH_SIZE
         self.features = np.load(config.retrieve('file'))[:config.NUM_SAMPLES:config.STEP]
 
-        if config.MAC:  # MAC rejects float64
-            self.features = self.features.astype(np.float32)
-
         self.input_slice = config.retrieve('model').input_slice
         self.target_slice = config.retrieve('model').output_slice
 
@@ -70,27 +67,19 @@ class NNDataModule(LightningDataModule):
             if config.ROTATIONAL_EQUIVARIANCE:
                 self.features = self.windowed_rotation(self.features)
 
-        total_windows = self.features.shape[0]
-        train_size = int(0.8 * total_windows)
-        val_size = int(0.1 * total_windows)
+        if config.MAC:  # MAC rejects float64
+            self.features = self.features.astype(np.float32)
+
+        total_len = self.features.shape[0]
+        train_size = int(0.8 * total_len)
+        val_size = int(0.1 * total_len)
 
         if config.SCALE:
             self.input_scaler = Scaler()
             self.target_scaler = Scaler()
             self.inputs = self.input_scaler.fit_transform(self.features[..., self.input_slice])
             self.targets = self.target_scaler.fit_transform(self.features[..., self.target_slice])
-
-            self.train_inputs = self.inputs[:train_size]
-            self.val_inputs = self.inputs[train_size:train_size + val_size]
-            self.test_inputs = self.inputs[train_size + val_size:]
-
-            self.train_targets = self.targets[:train_size]
-            self.val_targets = self.targets[train_size:train_size + val_size]
-            self.test_targets = self.targets[train_size + val_size:]
-
-            self.train_features = np.concatenate((self.train_inputs, self.train_targets), axis=-1)
-            self.val_features = np.concatenate((self.val_inputs, self.val_targets), axis=-1)
-            self.test_features = np.concatenate((self.test_inputs, self.test_targets), axis=-1)
+            self.features = np.concatenate((self.inputs, self.targets), axis=-1)
 
             if config.SCALER_FILE:  # and not os.path.exists(config.SCALER_FILE):
                 joblib.dump({
@@ -98,14 +87,9 @@ class NNDataModule(LightningDataModule):
                     'target_scaler': self.target_scaler,
                 }, config.SCALER_FILE)
 
-        else:
-            self.train_features = self.features[:train_size]
-            self.val_features = self.features[train_size:train_size + val_size]
-            self.test_features = self.features[train_size + val_size:]
-
-        self.train_dataset = self.dataset(self.train_features)
-        self.val_dataset = self.dataset(self.val_features)
-        self.test_dataset = self.dataset(self.test_features)
+        self.train_dataset = self.dataset(self.features[:train_size])
+        self.val_dataset = self.dataset(self.features[train_size:train_size + val_size])
+        self.test_dataset = self.dataset(self.features[train_size + val_size:])
 
     @staticmethod
     def windowed_rotation(windowed_data):
