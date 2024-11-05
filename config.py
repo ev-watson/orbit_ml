@@ -3,6 +3,7 @@ import inspect
 SEED = 42
 TYPE = 'gnn'
 ROTATIONAL_EQUIVARIANCE = True
+WINDOWED = True
 
 HIDDEN_DIM = 256
 NUM_LAYERS = 3
@@ -11,7 +12,7 @@ USE_BN = False
 USE_SE = False
 REDUCTION = 2
 
-MAX_EPOCHS = 20
+MAX_EPOCHS = 10
 ENABLE_EARLY_STOPPING = True
 PATIENCE = 6
 GRADIENT_CLIP_VAL = 1.2
@@ -22,7 +23,6 @@ SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
 
 NUM_SAMPLES = 100000  # None for all available
 STEP = 1
-WINDOWED = True
 NUM_WORKERS = 8
 PREFETCH_FACTOR = 4
 PIN_MEMORY = True
@@ -31,7 +31,7 @@ SCALE = True
 LOG_ATTN = False
 ON_STEP = False
 
-GINPUTS_FILE = 'gnn_targets.npy'
+GINPUTS_FILE = 'ginputs.npy'
 INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'
@@ -41,6 +41,10 @@ if MAC:
     NUM_WORKERS = 0
     PREFETCH_FACTOR = None
     PIN_MEMORY = False
+
+####################
+#     REGISTRY     #
+####################
 
 pre_registered_callers = {
     'data': 'ds',

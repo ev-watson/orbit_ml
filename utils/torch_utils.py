@@ -136,8 +136,8 @@ class PredictorMixin:
         """
         Prediction method that uses the same scaling function as training for use after model training.
         Must have scaler used with the original dataset saved as pkl file in cwd with name specified in config.
-        :param X: array-like, list of value pairs to use as input (excluding target), must be raw numbers unscaled.
-        :return: array of predicted target values.
+        :param X: torch.Tensor, list of value pairs to use as input (excluding target), must be raw numbers unscaled.
+        :return: Tensor of predicted target values.
         """
         self.eval()
         device = next(self.parameters()).device
@@ -145,13 +145,13 @@ class PredictorMixin:
             scalers = joblib.load(config.SCALER_FILE)
             input_scaler = scalers['input_scaler']
             target_scaler = scalers['target_scaler']
-            input_data = input_scaler.transform(torch.from_numpy(X).to(dtype=torch.get_default_dtype(), device=device))
+            input_data = input_scaler.transform(X.to(dtype=torch.get_default_dtype(), device=device))
             with torch.no_grad():
                 output_scaled = self.forward(input_data)
             out = target_scaler.inverse_transform(output_scaled)
         else:
             with torch.no_grad():
-                out = self.forward(torch.from_numpy(X).to(dtype=torch.get_default_dtype(), device=device))
+                out = self.forward(X.to(dtype=torch.get_default_dtype(), device=device))
         return out
 
 

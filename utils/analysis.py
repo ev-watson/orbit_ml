@@ -38,21 +38,19 @@ def print_analysis(g, t, ntrials, mape, suppress, err, verbose, axis=None):
     """
     Helper function for random tests
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    guess = torch.from_numpy(g).float().to(device)
-    target = torch.from_numpy(t).float().to(device)
-    mae = calc_mae(guess, target, axis=axis)
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'mps')
+    mae = calc_mae(g, t, axis=axis)
     if not suppress:
         print_block(f"RANDOM INPUT TESTING TRIALS: {ntrials}", err=err)
         print_block(f"MAE: {mae}", err=err)
         if verbose:
             print_block("PREDICTIONS:", err=err)
-            print(guess)
+            print(g)
             print_block("TARGETS:", err=err)
-            print(target)
+            print(t)
 
     if mape:
-        mape_val = calc_mape(guess, target, axis=axis)
+        mape_val = calc_mape(g, t, axis=axis)
         if not suppress:
             print_block(f"MAPE: {mape_val}%", err=err)
         return mae, mape_val
@@ -110,17 +108,20 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         s = config.SEQUENCE_LENGTH
         idx = np.random.randint(len(targets) - s + 1, size=ntrials)
         sampled = np.array([targets[i:i + s] for i in idx])  # shape [ntrials, s, f]
-        pred_vals = np.empty((ntrials, s, ntargs))
+        pred_vals = torch.empty((ntrials, s, ntargs))
     else:
         idx = np.random.randint(len(targets) - 1, size=ntrials)
         sampled = np.array([targets[i] for i in idx])
-        pred_vals = np.empty((ntrials, ntargs))
+        pred_vals = torch.empty((ntrials, ntargs))
 
-    input_data = sampled[..., inp_slice]
-    a_target = sampled[..., targ_slice]
+    device = next(model.parameters()).device
+    input_data = torch.from_numpy(sampled[..., inp_slice]).to(device=device, dtype=torch.get_default_dtype())
+    a_target = torch.from_numpy(sampled[..., targ_slice]).to(device=device, dtype=torch.get_default_dtype())
+    pred_vals = pred_vals.to(device)
 
     # Finds closest power of 2 that will make batch_size and num_batches as even as possible
-    batch_size = config.BATCH_SIZE if config.BATCH_SIZE and config.BATCH_SIZE < ntrials else 2 ** round(np.log2(np.sqrt(ntrials)))
+    # batch_size = config.BATCH_SIZE if config.BATCH_SIZE and config.BATCH_SIZE < ntrials else 2 ** round(np.log2(np.sqrt(ntrials)))
+    batch_size = 2 ** round(np.log2(np.sqrt(ntrials)))
     num_batches = int(np.ceil(ntrials / batch_size))
     if not suppress:
         print_block(f"{ntrials} TRIALS, {num_batches} BATCHES of {batch_size} SIZE", err=err)
@@ -128,8 +129,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         start_idx = batch_num * batch_size
         end_idx = min(start_idx + batch_size, ntrials)
         batch_input = input_data[start_idx:end_idx]
-        batch_pred = model.predict(batch_input)
-        pred_vals[start_idx:end_idx] = batch_pred.cpu()
+        pred_vals[start_idx:end_idx] = model.predict(batch_input)
 
     if SR:
         return input_data, pred_vals

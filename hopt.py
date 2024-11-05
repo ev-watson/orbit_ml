@@ -115,7 +115,7 @@ def objective(trial):
         'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
         'num_layers': trial.suggest_int('num_layers', 2, 5),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
-        'drop_rate': trial.suggest_float('drop_rate', 0.1, 0.7),
+        'drop_rate': trial.suggest_float('drop_rate', 0.01, 0.5),
         # 'se_block': trial.suggest_categorical('se_block', [True, False]),
         # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
         'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
