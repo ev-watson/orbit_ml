@@ -112,12 +112,13 @@ def objective(trial):
 
     params = {
         'lr': trial.suggest_float('lr', 1e-7, 1e-2, log=True),
-        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
-        'num_layers': trial.suggest_int('num_layers', 2, 5),
+        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024]),
+        'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
         'drop_rate': trial.suggest_float('drop_rate', 0.01, 0.5),
-        # 'se_block': trial.suggest_categorical('se_block', [True, False]),
+        'se_block': trial.suggest_categorical('se_block', [True, False]),
         # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
+        'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
         'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
         # 'activation_name': 'hardswish',
         'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
@@ -127,6 +128,7 @@ def objective(trial):
         'seqlen': trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300]),
     }
     config.SEQUENCE_LENGTH = params['seqlen']
+    config.ROTATIONAL_EQUIVARIANCE = params['rotational_equivariance']
 
     params['loss'] = loss_functions[params['loss_name']]
     params['scheduler_kwargs'] = {
@@ -177,7 +179,7 @@ def objective(trial):
     else:
         mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
 
-    return mae
+    return mae.item()
 
 
 sampler = optuna.samplers.NSGAIISampler(

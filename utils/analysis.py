@@ -38,7 +38,6 @@ def print_analysis(g, t, ntrials, mape, suppress, err, verbose, axis=None):
     """
     Helper function for random tests
     """
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'mps')
     mae = calc_mae(g, t, axis=axis)
     if not suppress:
         print_block(f"RANDOM INPUT TESTING TRIALS: {ntrials}", err=err)
@@ -119,9 +118,9 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     a_target = torch.from_numpy(sampled[..., targ_slice]).to(device=device, dtype=torch.get_default_dtype())
     pred_vals = pred_vals.to(device)
 
-    # Finds closest power of 2 that will make batch_size and num_batches as even as possible
-    # batch_size = config.BATCH_SIZE if config.BATCH_SIZE and config.BATCH_SIZE < ntrials else 2 ** round(np.log2(np.sqrt(ntrials)))
-    batch_size = 2 ** round(np.log2(np.sqrt(ntrials)))
+    # Finds closest power of 2 that will make batch_size and num_batches as even as possible then multiplies by 2
+    # batch_size = 2 ** (round(np.log2(np.sqrt(ntrials)))+1)
+    batch_size = 2048
     num_batches = int(np.ceil(ntrials / batch_size))
     if not suppress:
         print_block(f"{ntrials} TRIALS, {num_batches} BATCHES of {batch_size} SIZE", err=err)
