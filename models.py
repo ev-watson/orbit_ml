@@ -103,7 +103,6 @@ class GNN(BaseArch, PredictorMixin):
         self.drop_rate = kwargs.get('drop_rate', config.DROP_RATE)
         self.use_batch_norm = kwargs.get('batch_norm', config.USE_BN)
         self.use_se = kwargs.get('se_block', config.USE_SE)
-        self.use_re = kwargs.get('rotational_equivariance', config.ROTATIONAL_EQUIVARIANCE)
 
         self.input_layer = nn.Linear(self.input_dim, self.hidden_dim)
         self.mlp_layers = nn.ModuleList([nn.Linear(self.hidden_dim, self.hidden_dim) for _ in range(self.num_layers)])
