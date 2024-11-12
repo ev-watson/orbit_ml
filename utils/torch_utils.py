@@ -118,7 +118,10 @@ class SEBlock(LightningModule):
         )
 
     def forward(self, x):
-        y = torch.mean(x, dim=(0, 1))  # (channel,)
+        if x.ndim == 3:
+            y = torch.mean(x, dim=(0, 1))  # (channel,)
+        elif x.ndim == 2:
+            y = torch.mean(x, dim=0)  # (channel,)
         y = self.se_block(y)
         y = y.unsqueeze(0)  # (1, channel)
         return x * y, y.squeeze(0)  # (batch_size, channel), (channel,)

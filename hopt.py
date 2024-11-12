@@ -118,9 +118,8 @@ def objective(trial):
         'drop_rate': trial.suggest_float('drop_rate', 0.01, 0.5),
         'se_block': trial.suggest_categorical('se_block', [True, False]),
         # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
-        # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
-        # 'windowed': trial.suggest_categorical('windowed', [True, False]),
-        'windowed': False,
+        'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
+        'windowed': trial.suggest_categorical('windowed', [True, False]),
         'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
         # 'activation_name': 'hardswish',
         'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
@@ -128,8 +127,8 @@ def objective(trial):
         'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
     }
-    config.ROTATIONAL_EQUIVARIANCE = params['rotational_equivariance'] if params['rotational_equivariance'] else False
-    config.WINDOWED = params['windowed'] if params['windowed'] else False
+    config.ROTATIONAL_EQUIVARIANCE = params.get('rotational_equivariance', False)
+    config.WINDOWED = params.get('windowed', False)
     if config.WINDOWED:
         params['seqlen'] = trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300])
         config.SEQUENCE_LENGTH = params['seqlen']
