@@ -55,14 +55,18 @@ class NNDataModule(LightningDataModule):
         self.input_slice = config.retrieve('model').input_slice
         self.target_slice = config.retrieve('model').output_slice
 
-        if config.TYPE == 'gnn' and config.WINDOWED:
-            self.S = config.SEQUENCE_LENGTH
-            self.features = np.lib.stride_tricks.sliding_window_view(self.features,
-                                                                     window_shape=int(self.S),
-                                                                     axis=0)  # Shape [N-S+1, F, S]
-            self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
-            if config.ROTATIONAL_EQUIVARIANCE:
-                self.features = self.windowed_rotation(self.features)
+        if config.TYPE == 'gnn':
+            if config.WINDOWED:
+                self.S = config.SEQUENCE_LENGTH
+                self.features = np.lib.stride_tricks.sliding_window_view(self.features,
+                                                                         window_shape=int(self.S),
+                                                                         axis=0)  # Shape [N-S+1, F, S]
+                self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
+                if config.ROTATIONAL_EQUIVARIANCE:
+                    self.features = self.windowed_rotation(self.features)
+            else:
+                if config.ROTATIONAL_EQUIVARIANCE:
+                    self.features = self.rotation(self.features)
 
         if config.MAC:  # MAC rejects float64
             self.features = self.features.astype(np.float32)
@@ -87,6 +91,15 @@ class NNDataModule(LightningDataModule):
         self.train_dataset = self.dataset(self.features[:train_size])
         self.val_dataset = self.dataset(self.features[train_size:train_size + val_size])
         self.test_dataset = self.dataset(self.features[train_size + val_size:])
+
+    @staticmethod
+    def rotation(data):
+        x = data[..., :3]
+        x[..., 1] = np.random.uniform(0, np.pi, size=x.shape[0])
+        x[..., 2] = np.random.uniform(-np.pi, np.pi, size=x.shape[0])
+        v = sixth_order_central_difference(x, 1)
+        a = sixth_order_central_difference(v, 1)
+        return np.concatenate((x, v, a), axis=-1)
 
     @staticmethod
     def windowed_rotation(windowed_data):

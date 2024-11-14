@@ -46,13 +46,13 @@ base_opt_kwargs = {
     'betas1': {'type': 'float', 'low': 0.9, 'high': 0.99},  # Log inherently included in sampler function in utils
     'betas2': {'type': 'float', 'low': 0.99, 'high': 0.9999},
     'eps': {'type': 'float', 'default': 1e-10},
-    'weight_decay': {'type': 'float', 'low': 1e-8, 'high': 1e-2, 'log': True},
+    'weight_decay': {'type': 'float', 'low': 1e-10, 'high': 1e-2, 'log': True},
 }
 
 optimizer_hyperparams = {
     'sgd': {
         'momentum': {'type': 'float', 'low': 0.8, 'high': 0.99999},
-        'weight_decay': {'type': 'float', 'low': 1e-8, 'high': 1e-2, 'log': True},
+        'weight_decay': {'type': 'float', 'low': 1e-10, 'high': 1e-2, 'log': True},
         'nesterov': {'type': 'bool', 'default': True},
     },
     'adamw': {
@@ -107,28 +107,30 @@ config.TYPE = args.model
 
 
 def objective(trial):
-    seed_everything(config.SEED)
+    seed = np.random.randint(1, 10000)
+    print_block(f"TRIAL: {trial.number}, SEED: {seed}")
+    seed_everything(seed)
     clear_local_ckpt_files()
 
     params = {
-        'lr': trial.suggest_float('lr', 1e-7, 1e-2, log=True),
-        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024]),
+        'lr': trial.suggest_float('lr', 1e-7, 1e-2),
+        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
         'drop_rate': trial.suggest_float('drop_rate', 0.01, 0.5),
-        'se_block': trial.suggest_categorical('se_block', [True, False]),
+        # 'se_block': trial.suggest_categorical('se_block', [True, False]),
         # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
-        'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
-        'windowed': trial.suggest_categorical('windowed', [True, False]),
+        # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
+        # 'windowed': trial.suggest_categorical('windowed', [True, False]),
         'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
-        # 'activation_name': 'hardswish',
-        'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
-        # 'loss_name': 'l1',
-        'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
+        'activation_name': 'hardswish',
+        # 'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
+        'loss_name': 'smooth_l1',
+        # 'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
     }
-    config.ROTATIONAL_EQUIVARIANCE = params.get('rotational_equivariance', False)
-    config.WINDOWED = params.get('windowed', False)
+    config.ROTATIONAL_EQUIVARIANCE = params.get('rotational_equivariance', config.ROTATIONAL_EQUIVARIANCE)
+    config.WINDOWED = params.get('windowed', config.WINDOWED)
     if config.WINDOWED:
         params['seqlen'] = trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300])
         config.SEQUENCE_LENGTH = params['seqlen']
@@ -136,7 +138,7 @@ def objective(trial):
     params['loss'] = loss_functions[params['loss_name']]
     params['scheduler_kwargs'] = {
         'factor': trial.suggest_float('scheduler_factor', 0.05, .5),
-        'patience': 3,
+        'patience': 5,
     }
 
     data_module = NNDataModule()
@@ -176,13 +178,15 @@ def objective(trial):
 
     trainer.fit(model, datamodule=data_module)
 
-    rtrials = 50000
-    if args.model == 'interp':
-        mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
-    else:
-        mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
+    trainer.test(model, datamodule=data_module)
 
-    return mae.item()
+    # rtrials = 50000
+    # if args.model == 'interp':
+    #     mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
+    # else:
+    #     mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
+
+    return trainer.callback_metrics['test_loss'].item()
 
 
 sampler = optuna.samplers.NSGAIISampler(
