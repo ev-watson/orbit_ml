@@ -131,7 +131,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         pred_vals[start_idx:end_idx] = model.predict(batch_input)
 
     if SR:
-        return input_data, pred_vals
+        return input_data.cpu().numpy(), pred_vals.cpu().numpy()
 
     if not suppress:
         print_block("BEGINNING ANALYSIS", err=err)

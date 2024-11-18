@@ -2,8 +2,7 @@ import inspect
 
 SEED = 42
 TYPE = 'gnn'
-ROT_EQ = True
-ROT_EQ_CONSTRUCT = False
+ROTATIONAL_EQUIVARIANCE = False
 WINDOWED = False
 
 HIDDEN_DIM = 256
@@ -16,11 +15,11 @@ REDUCTION = 2
 MAX_EPOCHS = 25
 ENABLE_EARLY_STOPPING = True
 PATIENCE = 7
-GRADIENT_CLIP_VAL = 1.
+GRADIENT_CLIP_VAL = 1.2
 WEIGHT_DECAY = 3e-5
 DROP_RATE = 0.136
 SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 
 NUM_SAMPLES = None  # None for all available
 STEP = 1
@@ -37,7 +36,7 @@ INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'
 
-MAC = False
+MAC = True
 if MAC:
     NUM_WORKERS = 0
     PREFETCH_FACTOR = None

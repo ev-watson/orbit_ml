@@ -66,10 +66,10 @@ class NNDataModule(LightningDataModule):
                                                                          window_shape=int(self.S),
                                                                          axis=0)  # Shape [N-S+1, F, S]
                 self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
-                if config.ROT_EQ_CONSTRUCT:
+                if config.ROTATIONAL_EQUIVARIANCE:
                     self.features = self.windowed_rotation(self.features)
             else:
-                if config.ROT_EQ_CONSTRUCT:
+                if config.ROTATIONAL_EQUIVARIANCE:
                     self.features = self.rotation(self.features)
 
         if config.MAC:  # MAC rejects float64

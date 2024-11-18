@@ -102,24 +102,17 @@ class GNN(BaseArch, PredictorMixin):
         self.num_layers = kwargs.get('num_layers', config.NUM_LAYERS)
         self.drop_rate = kwargs.get('drop_rate', config.DROP_RATE)
         self.use_se = kwargs.get('se_block', config.USE_SE)
-        self.use_re = kwargs.get('rot_eq', config.ROT_EQ)
 
-        self.input_layer = nn.Linear(self.input_dim, self.hidden_dim, bias=not self.use_re)
-        self.mlp_layers = nn.ModuleList([nn.Linear(self.hidden_dim, self.hidden_dim, bias=not self.use_re) for _ in range(self.num_layers)])
-        self.output_layer = nn.Linear(self.hidden_dim, self.output_dim, bias=not self.use_re)
+        self.input_layer = nn.Linear(self.input_dim, self.hidden_dim)
+        self.mlp_layers = nn.ModuleList(
+            [nn.Linear(self.hidden_dim, self.hidden_dim) for _ in range(self.num_layers)])
+        self.output_layer = nn.Linear(self.hidden_dim, self.output_dim)
         self.dropout_input = nn.Dropout(p=self.drop_rate)
         self.dropouts = nn.ModuleList([nn.Dropout(p=self.drop_rate) for _ in range(self.num_layers)])
         if self.use_se:
             self.attns = None
             self.se_input = SEBlock(self.input_dim)
             self.se_block = nn.ModuleList([SEBlock(self.hidden_dim) for _ in range(self.num_layers)])
-
-        if self.use_re:
-            self.bias_input = nn.Parameter(torch.zeros(self.hidden_dim), requires_grad=True)
-            self.bias_mlp = nn.ParameterList([
-                nn.Parameter(torch.zeros(self.hidden_dim), requires_grad=True) for _ in range(self.num_layers)
-            ])
-            self.bias_output = nn.Parameter(torch.zeros(self.output_dim), requires_grad=True)
 
         self.save_hyperparameters()
 
@@ -132,39 +125,16 @@ class GNN(BaseArch, PredictorMixin):
             x, attn = self.se_input(x)
             self.attns = attn.detach().cpu().numpy()
         x = self.input_layer(x)
-        if self.use_re:
-            x += self.bias_input
         x = self.activation(x)
         x = self.dropout_input(x)
         for i, layer in enumerate(self.mlp_layers):
             x = layer(x)
-            if self.use_re:
-                x += self.bias_mlp[i]
             x = self.activation(x)
             x = self.dropouts[i](x)
             if self.use_se:
                 x, attn = self.se_block[i](x)
         x = self.output_layer(x)
-        if self.use_re:
-            x += self.bias_output
         return x
-
-    def enforce_weight_symmetry(self):
-        """
-        Enforce weight symmetry by resetting weights to be scalar multiples of identity.
-        This method should be called after each optimizer step.
-        """
-        with torch.no_grad():
-            min_dim = min(self.input_layer.weight.size())
-            self.input_layer.weight[:, :min_dim].copy_(torch.eye(min_dim).to(self.input_layer.weight.device))
-            self.input_layer.weight[:, min_dim:].zero_()
-
-            for layer in self.mlp_layers:
-                layer.weight.copy_(torch.eye(self.hidden_dim).to(layer.weight.device))
-
-            min_dim = min(self.output_layer.weight.size())
-            self.output_layer.weight[:, :min_dim].copy_(torch.eye(min_dim).to(self.output_layer.weight.device))
-            self.output_layer.weight[:, min_dim:].zero_()
 
     # def forward(self, merc_eph):
     #     param_device = next(self.parameters()).device

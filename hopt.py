@@ -108,7 +108,7 @@ config.TYPE = args.model
 
 def objective(trial):
     seed = np.random.randint(1, 10000)
-    print_block(f"TRIAL: {trial.number}, SEED: {seed}")
+    print_block(f"TRIAL: {trial.number}, SEED: {seed}", err=True)
     seed_everything(seed)
     clear_local_ckpt_files()
 
@@ -117,10 +117,9 @@ def objective(trial):
         'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
-        'drop_rate': trial.suggest_float('drop_rate', 0.01, 0.5),
+        'drop_rate': trial.suggest_float('drop_rate', 0.001, 0.5),
         'se_block': trial.suggest_categorical('se_block', [True, False]),
-        'rot_eq_construct': trial.suggest_categorical('rot_eq_construct', [True, False]),
-        'rot_eq': trial.suggest_categorical('rot_eq', [True, False]),
+        'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
         # 'windowed': trial.suggest_categorical('windowed', [True, False]),
         'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
         # 'activation_name': 'hardswish',
@@ -129,8 +128,7 @@ def objective(trial):
         'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
     }
-    config.ROT_EQ = params.get('rot_eq', config.ROT_EQ)
-    config.ROT_EQ_CONSTRUCT = params.get('rot_eq_construct', config.ROT_EQ_CONSTRUCT)
+    config.ROTATIONAL_EQUIVARIANCE = params.get('rot_eq_construct', config.ROTATIONAL_EQUIVARIANCE)
     config.WINDOWED = params.get('windowed', config.WINDOWED)
     if config.WINDOWED:
         params['seqlen'] = trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300])
@@ -183,7 +181,7 @@ def objective(trial):
 
     # return trainer.callback_metrics['test_loss'].item()
 
-    rtrials = 50000
+    rtrials = 500000
     if args.model == 'interp':
         mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
     else:
