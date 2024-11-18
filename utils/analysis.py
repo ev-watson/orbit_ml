@@ -120,7 +120,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
 
     # Finds closest power of 2 that will make batch_size and num_batches as even as possible then multiplies by 2
     # batch_size = 2 ** (round(np.log2(np.sqrt(ntrials)))+1)
-    batch_size = 2048
+    batch_size = 1024
     num_batches = int(np.ceil(ntrials / batch_size))
     if not suppress:
         print_block(f"{ntrials} TRIALS, {num_batches} BATCHES of {batch_size} SIZE", err=err)

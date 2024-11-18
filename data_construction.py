@@ -4,6 +4,7 @@ from scipy.spatial.transform import Rotation as Rot
 from torch.utils.data import DataLoader, Dataset
 
 from models import *
+from utils.numerical_methods import get_movements
 
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
 
@@ -28,20 +29,23 @@ class GNNDataset(Dataset):
     def __init__(self, features):
         super().__init__()
         self.features = features  # [N, S, F]
-        self.input_slice = config.retrieve('model').input_slice
-        self.target_slice = config.retrieve('model').output_slice
+        self.input_dim = config.retrieve('model').input_dim
+        self.output_dim = config.retrieve('model').output_dim
         self.windowed = config.WINDOWED
+
+        self.x_slc = slice(None, self.input_dim)
+        self.y_slc = slice(self.input_dim, self.input_dim+self.output_dim)
 
     def __len__(self):
         return self.features.shape[0]
 
     def __getitem__(self, idx):
         if self.windowed:
-            x = self.features[idx, :, self.input_slice]
-            y = self.features[idx, :, self.target_slice]
+            x = self.features[idx, :, self.x_slc]
+            y = self.features[idx, :, self.y_slc]
         else:
-            x = self.features[idx, self.input_slice]
-            y = self.features[idx, self.target_slice]
+            x = self.features[idx, self.x_slc]
+            y = self.features[idx, self.y_slc]
         return x, y
 
 
@@ -62,10 +66,10 @@ class NNDataModule(LightningDataModule):
                                                                          window_shape=int(self.S),
                                                                          axis=0)  # Shape [N-S+1, F, S]
                 self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
-                if config.ROTATIONAL_EQUIVARIANCE:
+                if config.ROT_EQ_CONSTRUCT:
                     self.features = self.windowed_rotation(self.features)
             else:
-                if config.ROTATIONAL_EQUIVARIANCE:
+                if config.ROT_EQ_CONSTRUCT:
                     self.features = self.rotation(self.features)
 
         if config.MAC:  # MAC rejects float64
@@ -80,7 +84,7 @@ class NNDataModule(LightningDataModule):
             self.target_scaler = Scaler()
             self.inputs = self.input_scaler.fit_transform(self.features[..., self.input_slice])
             self.targets = self.target_scaler.fit_transform(self.features[..., self.target_slice])
-            self.features = np.concatenate((self.inputs, self.targets), axis=-1)
+            self.features = np.column_stack((self.inputs, self.targets))
 
             if config.SCALER_FILE:  # and not os.path.exists(config.SCALER_FILE):
                 joblib.dump({
@@ -94,12 +98,10 @@ class NNDataModule(LightningDataModule):
 
     @staticmethod
     def rotation(data):
-        x = data[..., :3]
-        x[..., 1] = np.random.uniform(0, np.pi, size=x.shape[0])
-        x[..., 2] = np.random.uniform(-np.pi, np.pi, size=x.shape[0])
-        v = sixth_order_central_difference(x, 1)
-        a = sixth_order_central_difference(v, 1)
-        return np.concatenate((x, v, a), axis=-1)
+        x = data[..., :4]
+        x[..., 2] = np.random.uniform(0, np.pi, size=x.shape[0])
+        x[..., 3] = np.random.uniform(-np.pi, np.pi, size=x.shape[0])
+        return get_movements(x)
 
     @staticmethod
     def windowed_rotation(windowed_data):

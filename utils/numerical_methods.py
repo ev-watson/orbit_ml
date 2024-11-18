@@ -1,5 +1,24 @@
 import numpy as np
 from numba import njit, prange
+from scipy.interpolate import UnivariateSpline
+
+
+def get_movements(data):
+    """
+    Spline differentiate
+    :param data: array-like of shape (n_samples, n_features)
+    :return: array-like of shape (n_samples, n_features)
+    """
+    t = data[..., 0]
+    x1, x2, x3 = data[..., 1], data[..., 2], data[..., 3]
+
+    spline1 = UnivariateSpline(t, x1, k=3, s=0)
+    spline2 = UnivariateSpline(t, x2, k=3, s=0)
+    spline3 = UnivariateSpline(t, x3, k=3, s=0)
+
+    v1, v2, v3 = spline1.derivative(n=1)(t), spline2.derivative(n=1)(t), spline3.derivative(n=1)(t)
+    a1, a2, a3 = spline1.derivative(n=2)(t), spline2.derivative(n=2)(t), spline3.derivative(n=2)(t)
+    return np.column_stack([t, x1, x2, x3, v1, v2, v3, a1, a2, a3])
 
 
 @njit(fastmath=True)
