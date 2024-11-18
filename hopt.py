@@ -118,18 +118,19 @@ def objective(trial):
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
         'drop_rate': trial.suggest_float('drop_rate', 0.01, 0.5),
-        # 'se_block': trial.suggest_categorical('se_block', [True, False]),
-        # 'batch_norm': trial.suggest_categorical('batch_norm', [True, False]),
-        # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
+        'se_block': trial.suggest_categorical('se_block', [True, False]),
+        'rot_eq_construct': trial.suggest_categorical('rot_eq_construct', [True, False]),
+        'rot_eq': trial.suggest_categorical('rot_eq', [True, False]),
         # 'windowed': trial.suggest_categorical('windowed', [True, False]),
         'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
-        'activation_name': 'hardswish',
-        # 'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
-        'loss_name': 'smooth_l1',
-        # 'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
+        # 'activation_name': 'hardswish',
+        'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
+        # 'loss_name': 'smooth_l1',
+        'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
     }
-    config.ROTATIONAL_EQUIVARIANCE = params.get('rotational_equivariance', config.ROTATIONAL_EQUIVARIANCE)
+    config.ROT_EQ = params.get('rot_eq', config.ROT_EQ)
+    config.ROT_EQ_CONSTRUCT = params.get('rot_eq_construct', config.ROT_EQ_CONSTRUCT)
     config.WINDOWED = params.get('windowed', config.WINDOWED)
     if config.WINDOWED:
         params['seqlen'] = trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300])
@@ -178,20 +179,21 @@ def objective(trial):
 
     trainer.fit(model, datamodule=data_module)
 
-    trainer.test(model, datamodule=data_module)
+    # trainer.test(model, datamodule=data_module)
 
-    # rtrials = 50000
-    # if args.model == 'interp':
-    #     mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
-    # else:
-    #     mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
+    # return trainer.callback_metrics['test_loss'].item()
 
-    return trainer.callback_metrics['test_loss'].item()
+    rtrials = 50000
+    if args.model == 'interp':
+        mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
+    else:
+        mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
+
+    return mae.item()
 
 
 sampler = optuna.samplers.NSGAIISampler(
     population_size=50,
-    seed=config.SEED,
 )
 study_name = f"{args.model}_{args.opt}_study"
 storage_name = f"sqlite:///{study_name}.db"
