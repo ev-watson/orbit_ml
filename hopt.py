@@ -30,6 +30,7 @@ loss_functions = {
     'huber': F.huber_loss,
     'mse': F.mse_loss,
     'rmwe': rmwe_loss,
+    'zero-one': zero_one_approximation_loss,
 }
 
 optimizer_functions = {
@@ -91,6 +92,9 @@ loss_hyperparams = {
     'smooth_l1': {
         'beta': {'type': 'float', 'low': 1e-1, 'high': 2e0}
     },
+    'zero-one': {
+        'sigma': {'type': 'float', 'low': 1e-2, 'high': 1.},
+    },
 }
 
 parser = argparse.ArgumentParser(description="Hyper-optimization")
@@ -117,18 +121,18 @@ def objective(trial):
         'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
-        'drop_rate': trial.suggest_float('drop_rate', 0.001, 0.5),
-        'se_block': trial.suggest_categorical('se_block', [True, False]),
-        'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
+        'drop_rate': trial.suggest_float('drop_rate', 1e-3, 0.5),
+        # 'se_block': trial.suggest_categorical('se_block', [True, False]),
+        # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
         # 'windowed': trial.suggest_categorical('windowed', [True, False]),
-        'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
+        # 'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
         # 'activation_name': 'hardswish',
         'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
-        # 'loss_name': 'smooth_l1',
+        # 'loss_name': 'zero-one',
         'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
         'optimizer': optimizer_functions[args.opt],
     }
-    config.ROTATIONAL_EQUIVARIANCE = params.get('rot_eq_construct', config.ROTATIONAL_EQUIVARIANCE)
+    config.ROTATIONAL_EQUIVARIANCE = params.get('rotational_equivariance', config.ROTATIONAL_EQUIVARIANCE)
     config.WINDOWED = params.get('windowed', config.WINDOWED)
     if config.WINDOWED:
         params['seqlen'] = trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300])
@@ -136,7 +140,7 @@ def objective(trial):
 
     params['loss'] = loss_functions[params['loss_name']]
     params['scheduler_kwargs'] = {
-        'factor': trial.suggest_float('scheduler_factor', 0.05, .5),
+        'factor': trial.suggest_float('scheduler_factor', 0.01, .5),
         'patience': 5,
     }
 
@@ -191,7 +195,10 @@ def objective(trial):
 
 
 sampler = optuna.samplers.NSGAIISampler(
-    population_size=50,
+    population_size=100,
+    crossover_prob=0.915,
+    mutation_prob=0.12,
+    swapping_prob=0.55,
 )
 study_name = f"{args.model}_{args.opt}_study"
 storage_name = f"sqlite:///{study_name}.db"

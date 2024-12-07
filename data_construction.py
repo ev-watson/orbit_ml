@@ -85,7 +85,7 @@ class NNDataModule(LightningDataModule):
             self.targets = self.target_scaler.fit_transform(self.features[..., self.target_slice])
             self.features = np.column_stack((self.inputs, self.targets))
 
-            if config.SCALER_FILE:  # and not os.path.exists(config.SCALER_FILE):
+            if config.SCALER_FILE and not os.path.exists(config.SCALER_FILE):
                 joblib.dump({
                     'input_scaler': self.input_scaler,
                     'target_scaler': self.target_scaler,
