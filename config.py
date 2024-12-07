@@ -36,7 +36,7 @@ INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'
 
-MAC = True
+MAC = False
 if MAC:
     NUM_SAMPLES = 100000
     NUM_WORKERS = 0

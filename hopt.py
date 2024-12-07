@@ -93,7 +93,7 @@ loss_hyperparams = {
         'beta': {'type': 'float', 'low': 1e-1, 'high': 2e0}
     },
     'zero-one': {
-        'sigma': {'type': 'float', 'low': 1e-2, 'high': 1.},
+        'sigma': {'type': 'float', 'low': .1, 'high': 1.},
     },
 }
 
