@@ -1,6 +1,19 @@
 import torch
 
 
+def zero_one_approximation_loss(guess, target, sigma):
+    """
+    Zero One Approximation loss, "well" shaped around target
+    :param guess: torch.Tensor, guess
+    :param target: torch.Tensor, target
+    :param sigma: width of well around target, higher value means larger width
+    :return: loss
+    """
+    diff_squared = (guess - target) ** 2
+    loss = 1 - torch.exp(-diff_squared / (2 * sigma ** 2))
+    return loss.mean()
+
+
 def rmwe_loss(g, t, reduction='mean'):
     """
     Relative mean weighted error

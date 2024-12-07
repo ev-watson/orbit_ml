@@ -38,7 +38,8 @@ from .losses import (
     rmwe_loss,
     mape_loss,
     calc_mae,
-    calc_mape
+    calc_mape,
+    zero_one_approximation_loss
 )
 from .logging_utils import (
     print_err,
@@ -49,7 +50,8 @@ from .misc import (
 )
 from .numerical_methods import (
     socfdw,
-    sixth_order_central_difference
+    sixth_order_central_difference,
+    get_movements
 )
 from .optuna_helpers import (
     sample_hyperparams,

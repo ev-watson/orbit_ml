@@ -103,7 +103,11 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     inp_slice = config.retrieve('model').input_slice
     targ_slice = config.retrieve('model').output_slice
     ntargs = config.retrieve('model').output_dim
-    if config.WINDOWED:
+    if SR:
+        idx = np.random.randint(len(targets) - ntrials - 1)
+        sampled = targets[idx:idx+ntrials]
+        pred_vals = torch.empty((ntrials, ntargs))
+    elif config.WINDOWED:
         s = config.SEQUENCE_LENGTH
         idx = np.random.randint(len(targets) - s + 1, size=ntrials)
         sampled = np.array([targets[i:i + s] for i in idx])  # shape [ntrials, s, f]

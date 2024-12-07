@@ -4,7 +4,6 @@ from scipy.spatial.transform import Rotation as Rot
 from torch.utils.data import DataLoader, Dataset
 
 from models import *
-from utils.numerical_methods import get_movements
 
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
 
@@ -34,7 +33,7 @@ class GNNDataset(Dataset):
         self.windowed = config.WINDOWED
 
         self.x_slc = slice(None, self.input_dim)
-        self.y_slc = slice(self.input_dim, self.input_dim+self.output_dim)
+        self.y_slc = slice(self.input_dim, self.input_dim + self.output_dim)
 
     def __len__(self):
         return self.features.shape[0]
