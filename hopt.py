@@ -111,7 +111,7 @@ config.TYPE = args.model
 
 
 def objective(trial):
-    seed = np.random.randint(1, 10000)
+    seed = config.SEED if config.SEED else np.random.randint(1, 10000)
     print_block(f"TRIAL: {trial.number}, SEED: {seed}", err=True)
     seed_everything(seed)
     clear_local_ckpt_files()
