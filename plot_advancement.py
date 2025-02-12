@@ -121,8 +121,8 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
 
         params, covar = curve_fit(quadplusperiodic, adv_times, adv_list)
         fig.suptitle(f"w: {params[1]:.3f} as/yr, Q: {params[2]:.4f} as/yr^2")
-        plt.show()
         plt.savefig(f"plot_advancement_{ref_year:.0f}.png", dpi=300)
+        plt.show()
         plt.close()
 
     return np.array(adv_times), np.array(adv_list), params, covar
