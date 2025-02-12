@@ -10,7 +10,7 @@ from .analysis import (
     separate_orbits,
     print_analysis,
     interp_test,
-    gnn_test
+    gnn_test,
 )
 from .torch_utils import (
     Scaler,
@@ -27,34 +27,35 @@ from .coordinate_transformations import (
     alignment_matrix,
     apply_rotation,
     reflect_across_z,
-    flat_plane
+    flat_plane,
 )
 from .data_processing import (
     find_observation_times,
     convert_to_decimal_years,
-    load_np
+    load_np,
 )
 from .losses import (
     rmwe_loss,
     mape_loss,
     calc_mae,
     calc_mape,
-    zero_one_approximation_loss
+    zero_one_approximation_loss,
 )
 from .logging_utils import (
     print_err,
     print_block
 )
 from .misc import (
-    clear_local_ckpt_files
+    clear_local_ckpt_files,
+    new_parameter,
 )
 from .numerical_methods import (
     socfdw,
     sixth_order_central_difference,
-    get_movements
+    get_movements,
 )
 from .optuna_helpers import (
     sample_hyperparams,
     print_best_optuna,
-    plot_pareto
+    plot_pareto,
 )

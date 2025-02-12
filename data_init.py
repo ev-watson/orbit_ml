@@ -11,26 +11,27 @@ parser = argparse.ArgumentParser(description="Data from APL requests")
 parser.add_argument("--object", "-o", type=str, default="merc")
 parser.add_argument("--center-yr", '-cy', type=int, default=1870)
 parser.add_argument("--length", '-l', type=int, default=40)
+parser.add_argument("--name", '-n', type=str, default="horizons")
 args = parser.parse_args()
 
 
 def fetch_data(year, jump, orbital_elements, earth):
     if orbital_elements:
-        url = f"https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='199'&OBJ_DATA='YES'&MAKE_EPHEM='YES'&EPHEM_TYPE='ELEMENTS'&CENTER='500@10'&START_TIME='{year}-04-20 00:00 TDB'&STOP_TIME='{year + jump}-04-20 00:00'&STEP_SIZE='22505'&REF_SYSTEM='ICRF'&REF_PLANE='FRAME'&CSV_FORMAT='YES'"
+        url = f"https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='199'&OBJ_DATA='YES'&MAKE_EPHEM='YES'&EPHEM_TYPE='ELEMENTS'&CENTER='500@10'&START_TIME='{year:0>4}-Apr-01 00:00 TDB'&STOP_TIME='{year + jump:0>4}-Apr-01 00:00'&STEP_SIZE='22505'&REF_SYSTEM='ICRF'&REF_PLANE='FRAME'&CSV_FORMAT='YES'"
         usecols = [0, 2, 3, 4, 5, 6, 7, 11, 13]
         colnames = ['JDTDB', 'EC', 'QR', 'IN', 'OM', 'W', 'Tp', 'A', 'PR']
         skiprows = 51
         skipfooter = 72
         name = 'ooe'
     elif earth:
-        url = f"https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='399'&OBJ_DATA='YES'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@10'&START_TIME='{year}-04-20 00:00 TDB'&STOP_TIME='{year + jump}-04-20 00:00'&STEP_SIZE='12m'&REF_SYSTEM='ICRF'&REF_PLANE='FRAME'&VEC_TABLE='1'&CSV_FORMAT='YES'"
+        url = f"https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='399'&OBJ_DATA='YES'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@10'&START_TIME='{year:0>4}-Apr-01 00:00 TDB'&STOP_TIME='{year + jump:0>4}-Apr-01 00:00'&STEP_SIZE='12m'&REF_SYSTEM='ICRF'&REF_PLANE='FRAME'&VEC_TABLE='1'&CSV_FORMAT='YES'"
         usecols = [0, 2, 3, 4]
         colnames = ['JDTDB', 'X', 'Y', 'Z']
         skiprows = 57
         skipfooter = 63
         name = 'earth'
     else:
-        url = f"https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='199'&OBJ_DATA='YES'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@10'&START_TIME='{year}-04-20 00:00 TDB'&STOP_TIME='{year + jump}-04-20 00:00'&STEP_SIZE='12m'&REF_SYSTEM='ICRF'&REF_PLANE='FRAME'&VEC_TABLE='2'&CSV_FORMAT='YES'"
+        url = f"https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='199'&OBJ_DATA='YES'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@10'&START_TIME='{year:0>4}-Apr-01 00:00 TDB'&STOP_TIME='{year + jump:0>4}-Apr-01 00:00'&STEP_SIZE='12m'&REF_SYSTEM='ICRF'&REF_PLANE='FRAME'&VEC_TABLE='2'&CSV_FORMAT='YES'"
         usecols = [0, 2, 3, 4, 5, 6, 7]
         colnames = ['JDTDB', 'X', 'Y', 'Z', 'VX', 'VY', 'VZ']
         skiprows = 50
@@ -130,4 +131,4 @@ if __name__ == '__main__':
     # Fetch Mercury data
     if args.object == 'merc':
         horizons = get_horizons(args.length, center_yr=args.center_yr, time_step='lowest')
-        horizons.to_csv('horizons.csv', index=False)
+        horizons.to_csv(f"{args.name}.csv", index=False)

@@ -118,11 +118,13 @@ def objective(trial):
 
     params = {
         'lr': trial.suggest_float('lr', 1e-7, 1e-2),
-        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512]),
+        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024]),
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
-        'drop_rate': trial.suggest_float('drop_rate', 1e-3, 0.5),
+        'drop_rate': trial.suggest_float('drop_rate', 5e-3, 0.5),
+        'dropout_frequency': trial.suggest_int('dropout_frequency', 1, 4),
         # 'se_block': trial.suggest_categorical('se_block', [True, False]),
+        'se_reduction': trial.suggest_categorical('se_reduction', [2, 4, 8, 16]),
         # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
         # 'windowed': trial.suggest_categorical('windowed', [True, False]),
         # 'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
@@ -141,7 +143,7 @@ def objective(trial):
     params['loss'] = loss_functions[params['loss_name']]
     params['scheduler_kwargs'] = {
         'factor': trial.suggest_float('scheduler_factor', 0.01, .5),
-        'patience': 5,
+        'patience': trial.suggest_int('patience', 3, 6),
     }
 
     data_module = NNDataModule()

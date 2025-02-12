@@ -1,26 +1,40 @@
 import inspect
 
+####################
+#  BASIC SETTINGS  #
+####################
 SEED = 42
 TYPE = 'gnn'
 ROTATIONAL_EQUIVARIANCE = True
 WINDOWED = False
+MAC = False
 
+####################
+# MODEL PARAMETERS #
+####################
 HIDDEN_DIM = 256
 NUM_LAYERS = 3
 LEARNING_RATE = 1e-5
 USE_BN = False
-USE_SE = False
-REDUCTION = 2
+USE_SE = True
+SE_REDUCTION = 2
 
+#####################
+# TRAINING SETTINGS #
+#####################
 MAX_EPOCHS = 25
 ENABLE_EARLY_STOPPING = True
 PATIENCE = 7
 GRADIENT_CLIP_VAL = 1.5
 WEIGHT_DECAY = 3e-5
 DROP_RATE = 0.136
+DROPOUT_FREQUENCY = 3   # Every X layers a dropout layer will occur
 SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
-BATCH_SIZE = 64
 
+####################
+#  BATCH AND DATA  #
+####################
+BATCH_SIZE = 64
 NUM_SAMPLES = None  # None for all available
 STEP = 1
 NUM_WORKERS = 8
@@ -28,15 +42,23 @@ PREFETCH_FACTOR = 4
 PIN_MEMORY = True
 SCALE = True
 
+####################
+#  LOGGING/FLAGS   #
+####################
 LOG_ATTN = False
 ON_STEP = False
 
+####################
+#    FILE NAMES    #
+####################
 GINPUTS_FILE = 'ginputs.npy'
 INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'
 
-MAC = False
+####################
+#   MAC SETTINGS   #
+####################
 if MAC:
     NUM_SAMPLES = 100000
     NUM_WORKERS = 0
@@ -46,7 +68,6 @@ if MAC:
 ####################
 #     REGISTRY     #
 ####################
-
 pre_registered_callers = {
     'data': 'ds',
     'model': 'model',

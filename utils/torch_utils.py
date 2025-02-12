@@ -108,7 +108,7 @@ class Scaler:
 
 
 class SEBlock(LightningModule):
-    def __init__(self, channel, reduction=config.REDUCTION):
+    def __init__(self, channel, reduction=config.SE_REDUCTION):
         super(SEBlock, self).__init__()
         self.se_block = nn.Sequential(
             nn.Linear(channel, channel // reduction, bias=False),

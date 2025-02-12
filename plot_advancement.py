@@ -1,13 +1,15 @@
 import dask.dataframe as dd
-import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
 import numpy as np
-from astropy.time import Time
+import pandas as pd
 import vg
-from tqdm import tqdm
-from utils import mean_L_vector
+from astropy.time import Time
 from dask.diagnostics import ProgressBar
+from numba import njit
+from scipy.optimize import curve_fit
+from tqdm import tqdm
+
+from utils import *
 
 
 def quadplusperiodic(t, A, w, Q):
@@ -41,6 +43,7 @@ def quadplusperiodic(t, A, w, Q):
     return A + w * t + Q * t ** 2 + total
 
 
+@njit
 def get_peri_indices(ds):
     """
     Grabs periapsis vector indices from a list of distances from the center coord in an elliptical orbit.
@@ -49,49 +52,62 @@ def get_peri_indices(ds):
     :return: list of indices of peri-vectors
     """
     peri_indices = []
-    ds = ds.compute()
-    for i in tqdm(range(1, len(ds) - 1), desc="Finding Periapsis Indices"):
-        if ds.iloc[i - 1] > ds.iloc[i] < ds.iloc[i + 1]:
+    for i in range(1, len(ds) - 1):
+        if ds[i - 1] > ds[i] < ds[i + 1]:
             peri_indices.append(i)
     return peri_indices
 
 
-def plot_advancement(data, perihelion_indices=None, plot=True):
+def plot_advancement(daskdf, perihelion_indices=None, plot=True):
     """
     Plots advancement over time from ephemeral data.
 
     :param plot: bool, whether or not to plot
-    :param data: pd.DataFrame of Mercury's ephemeral data
+    :param daskdf: dask.DataFrame of Mercury's ephemeral data
     :param perihelion_indices: list of indices of perihelion vectors
     :return: Plot of perihelion longitudinal advancement over time and x and y list
     """
     position_column_names = ['X', 'Y', 'Z']
+    velocity_column_names = ['VX', 'VY', 'VZ']
+    print_block("COMPUTING DF")
+    with ProgressBar():
+        data = daskdf.compute()
+    print_block("COMPUTING RANGE")
+    data['RG'] = np.sqrt(data['X'] ** 2 + data['Y'] ** 2 + data['Z'] ** 2)
 
     if perihelion_indices is None:
-        peri_indices = get_peri_indices(data['RG'])
+        peri_indices = get_peri_indices(np.asarray(data['RG']))
     else:
         peri_indices = perihelion_indices
 
     n = len(data)
-    date_time = Time(data['JDTDB'].compute(), format='jd', scale='tdb')
+    print_block("COMPUTING DATES")
+    date_time = Time(data['JDTDB'], format='jd', scale='tdb')
     date_time.format = 'decimalyear'
-    dates = dd.from_pandas(pd.Series([t.decimalyear for t in date_time], dtype=np.float64), npartitions=n)
-    dates = dates.compute()
+    # datesdf = dd.from_pandas(pd.Series(date_time.decimalyear, dtype=np.float64))
+    datesdf = pd.Series(date_time.decimalyear, dtype=np.float64)
+    print_block("DF FORMED, COMPUTING DATES")
+    dates = datesdf
     ref_year = dates.iloc[len(dates) // 2 - 1]  # make reference date the middle
     adv_list = []
     adv_times = []
 
-    reference_peri = np.array(data.compute().iloc[peri_indices[len(peri_indices) // 2]][position_column_names])
+    print_block("COMPUTING REFERENCE VECTOR")
+    reference_peri = np.array(data.iloc[peri_indices[len(peri_indices) // 2]][position_column_names])
 
-    mean_orbit_pole_vector = mean_L_vector(data.iloc[n // 2 - 440:n // 2 + 440])
+    print_block("COMPUTING MEAN ORBIT VECTOR")
+    # Grab small area around middle
+    x = np.array(data.iloc[n // 2 - 440:n // 2 + 440][position_column_names])
+    v = np.array(data.iloc[n // 2 - 440:n // 2 + 440][velocity_column_names])
+    mean_orbit_pole_vector = mean_L_vector(x=x, v=v)
 
     for p in tqdm(peri_indices, desc="Calculating Advancements"):
-        peri = np.array(data.compute().iloc[p][position_column_names])
+        peri = np.array(data.iloc[p][position_column_names])
 
         advancement = vg.signed_angle(reference_peri, peri, look=mean_orbit_pole_vector) * 3600
 
         adv_list.append(advancement)
-        adv_times.append(dates.iloc[p] - dates.iloc[n // 2])  # in years
+        adv_times.append((dates.iloc[p] - dates.iloc[n // 2]) / 100)  # in centuries
 
     if plot:
         fig, ax = plt.subplots()
@@ -99,7 +115,7 @@ def plot_advancement(data, perihelion_indices=None, plot=True):
         ax.set_xlabel("Year")
         ax.set_ylabel("Mercury Perihelion advancement (arcsec)")
 
-        ax.set_xticks([adv_times[0], 0, adv_times[-1]], labels=[f'{ref_year + adv_times[0] * 100:.0f}', f'{ref_year}',
+        ax.set_xticks([adv_times[0], 0, adv_times[-1]], labels=[f'{ref_year + adv_times[0] * 100:.0f}', f'{ref_year:.0f}',
                                                                 f'{ref_year + adv_times[-1] * 100:.0f}'])
         ax.plot(adv_times, adv_list)
 
@@ -109,14 +125,14 @@ def plot_advancement(data, perihelion_indices=None, plot=True):
         plt.savefig(f"plot_advancement_{ref_year:.0f}.png", dpi=300)
         plt.close()
 
-    return np.array(adv_times), np.array(adv_list)
+    return np.array(adv_times), np.array(adv_list), params, covar
 
 
 if __name__ == '__main__':
-    with ProgressBar():
-        df = dd.read_csv('horizons.csv', dtype=float, blocksize=300e6)
-        x_data, y_data = plot_advancement(df)
-        np.save('x_data.npy', x_data)
-        np.save('y_data.npy', y_data)
-        parameters, covariance = curve_fit(quadplusperiodic, x_data, y_data)
-        print(f'w: {parameters[1]} as/yr, Q: {parameters[2]} as/yr^2')
+    df = dd.read_csv('horizons2000.csv', dtype=float, blocksize=300e6)  # Block size in bytes
+    # df = dd.from_pandas(df.head(100000))
+    print_block("DATA LOADED")
+    x_data, y_data, params, covar = plot_advancement(df)
+    np.save('x_data.npy', x_data)
+    np.save('y_data.npy', y_data)
+    print(f'w: {params[1]} as/yr, Q: {params[2]} as/yr^2')

@@ -57,8 +57,8 @@ class BaseArch(LightningModule):
         scheduler = self.scheduler(optimizer, **self.scheduler_kwargs)
         if self.scheduler == torch.optim.lr_scheduler.ReduceLROnPlateau:
             self.s_config = {"scheduler": scheduler, "monitor": "val_loss"}
-        elif self.scheduler == torch.optim.lr_scheduler.OneCycleLR:
-            self.s_config = {'scheduler': scheduler, 'interval': 'epoch'}
+        elif self.scheduler == torch.optim.lr_scheduler.OneCycleLR or self.scheduler == torch.optim.lr_scheduler.CyclicLR:
+            self.s_config = {'scheduler': scheduler, 'interval': 'step'}
         return {"optimizer": optimizer, "lr_scheduler": self.s_config}
 
 
@@ -100,8 +100,10 @@ class GNN(BaseArch, PredictorMixin):
         self.output_dim = kwargs.get('output_dim', self.output_dim)
         self.hidden_dim = kwargs.get('hidden_dim', config.HIDDEN_DIM)
         self.num_layers = kwargs.get('num_layers', config.NUM_LAYERS)
+        self.dropout_frequency = kwargs.get('dropout_frequency', config.DROPOUT_FREQUENCY)
         self.drop_rate = kwargs.get('drop_rate', config.DROP_RATE)
         self.use_se = kwargs.get('se_block', config.USE_SE)
+        self.se_reduction = kwargs.get('se_reduction', config.SE_REDUCTION)
 
         self.input_layer = nn.Linear(self.input_dim, self.hidden_dim)
         self.mlp_layers = nn.ModuleList(
@@ -111,8 +113,8 @@ class GNN(BaseArch, PredictorMixin):
         self.dropouts = nn.ModuleList([nn.Dropout(p=self.drop_rate) for _ in range(self.num_layers)])
         if self.use_se:
             self.attns = None
-            self.se_input = SEBlock(self.input_dim)
-            self.se_block = nn.ModuleList([SEBlock(self.hidden_dim) for _ in range(self.num_layers)])
+            self.se_input = SEBlock(self.input_dim, reduction=self.se_reduction)
+            self.se_block = nn.ModuleList([SEBlock(self.hidden_dim, reduction=self.se_reduction) for _ in range(self.num_layers)])
 
         self.save_hyperparameters()
 
@@ -129,8 +131,10 @@ class GNN(BaseArch, PredictorMixin):
         x = self.dropout_input(x)
         for i, layer in enumerate(self.mlp_layers):
             x = layer(x)
-            x = self.activation(x)
-            x = self.dropouts[i](x)
+            if i % self.dropout_frequency == 0:
+                x = self.dropouts[i](x)
+            else:
+                x = self.activation(x)
             if self.use_se:
                 x, attn = self.se_block[i](x)
         x = self.output_layer(x)
