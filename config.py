@@ -7,7 +7,7 @@ SEED = 42
 TYPE = 'gnn'
 ROTATIONAL_EQUIVARIANCE = True
 WINDOWED = False
-MAC = False
+MAC = True
 
 ####################
 # MODEL PARAMETERS #

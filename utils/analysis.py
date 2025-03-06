@@ -41,7 +41,7 @@ def print_analysis(g, t, ntrials, mape, suppress, err, verbose, axis=None):
     mae = calc_mae(g, t, axis=axis)
     if not suppress:
         print_block(f"RANDOM INPUT TESTING TRIALS: {ntrials}", err=err)
-        print_block(f"MAE: {mae}", err=err)
+        print_block(f"MAE: {mae:.6g}", err=err)
         if verbose:
             print_block("PREDICTIONS:", err=err)
             print(g)
@@ -51,7 +51,7 @@ def print_analysis(g, t, ntrials, mape, suppress, err, verbose, axis=None):
     if mape:
         mape_val = calc_mape(g, t, axis=axis)
         if not suppress:
-            print_block(f"MAPE: {mape_val}%", err=err)
+            print_block(f"MAPE: {mape_val:.6g}%", err=err)
         return mae, mape_val
     else:
         return mae
@@ -105,6 +105,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     ntargs = config.retrieve('model').output_dim
     if SR:
         idx = np.random.randint(len(targets) - ntrials - 1)
+        # for symbolic regression we want consecutive points
         sampled = targets[idx:idx+ntrials]
         pred_vals = torch.empty((ntrials, ntargs))
     elif config.WINDOWED:
@@ -114,6 +115,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         pred_vals = torch.empty((ntrials, s, ntargs))
     else:
         idx = np.random.randint(len(targets) - 1, size=ntrials)
+        # for regular we want random points
         sampled = np.array([targets[i] for i in idx])
         pred_vals = torch.empty((ntrials, ntargs))
 
@@ -135,6 +137,8 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
         pred_vals[start_idx:end_idx] = model.predict(batch_input)
 
     if SR:
+        if not suppress:
+            print_analysis(pred_vals, a_target, ntrials, mape, suppress, err, verbose, axis=mean_axis)
         return input_data.cpu().numpy(), pred_vals.cpu().numpy()
 
     if not suppress:

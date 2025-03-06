@@ -129,8 +129,8 @@ class SEBlock(LightningModule):
 
 class PredictorMixin:
     """
-    Generic prediction mixin for use with unscaled inputs
-    If no scaling this function is no different than calling self.forward with eval and no_grad)
+    Generic prediction mixin for use with unscaled inputs on a model that was trained with scaled inputs
+    If no scaling was involved this function is no different than calling self.forward with eval and no_grad)
     """
     input_slice = None
     output_slice = None

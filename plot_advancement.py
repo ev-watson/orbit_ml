@@ -84,7 +84,6 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
     print_block("COMPUTING DATES")
     date_time = Time(data['JDTDB'], format='jd', scale='tdb')
     date_time.format = 'decimalyear'
-    # datesdf = dd.from_pandas(pd.Series(date_time.decimalyear, dtype=np.float64))
     datesdf = pd.Series(date_time.decimalyear, dtype=np.float64)
     print_block("DF FORMED, COMPUTING DATES")
     dates = datesdf
@@ -121,7 +120,7 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
 
         params, covar = curve_fit(quadplusperiodic, adv_times, adv_list)
         fig.suptitle(f"w: {params[1]:.3f} as/yr, Q: {params[2]:.4f} as/yr^2")
-        plt.savefig(f"plot_advancement_{ref_year:.0f}.png", dpi=300)
+        fig.savefig(f"plot_advancement_{ref_year:.0f}.png", dpi=300)
         plt.show()
         plt.close()
 
@@ -130,7 +129,6 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
 
 if __name__ == '__main__':
     df = dd.read_csv('horizons2000.csv', dtype=float, blocksize=300e6)  # Block size in bytes
-    # df = dd.from_pandas(df.head(100000))
     print_block("DATA LOADED")
     x_data, y_data, params, covar = plot_advancement(df)
     np.save('x_data.npy', x_data)

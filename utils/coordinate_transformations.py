@@ -149,7 +149,7 @@ def apply_rotation(v, R):
     """
     vc = np.ascontiguousarray(v)
     Rc = np.ascontiguousarray(R)
-    return np.dot(vc, Rc.T)
+    return np.einsum('ij,kj->ik', vc, Rc)
 
 
 @njit
