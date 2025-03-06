@@ -7,7 +7,7 @@ SEED = 42
 TYPE = 'gnn'
 ROTATIONAL_EQUIVARIANCE = True
 WINDOWED = False
-MAC = True
+MAC = False
 
 ####################
 # MODEL PARAMETERS #
@@ -34,7 +34,7 @@ SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
 ####################
 #  BATCH AND DATA  #
 ####################
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 NUM_SAMPLES = None  # None for all available
 STEP = 1
 NUM_WORKERS = 8

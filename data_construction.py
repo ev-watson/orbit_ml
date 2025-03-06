@@ -99,7 +99,7 @@ class NNDataModule(LightningDataModule):
 
     @staticmethod
     def rotation(data):
-        x = data[..., :4]
+        x = data[..., :7]
         x[..., 2] = np.random.uniform(0, np.pi, size=x.shape[0])
         x[..., 3] = np.random.uniform(-np.pi, np.pi, size=x.shape[0])
         return get_movements(x)
