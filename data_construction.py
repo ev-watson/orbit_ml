@@ -2,7 +2,6 @@ import os
 
 import joblib
 from lightning.pytorch import LightningDataModule
-from scipy.spatial.transform import Rotation as Rot
 from torch.utils.data import DataLoader, Dataset
 
 from models import *
@@ -67,11 +66,9 @@ class NNDataModule(LightningDataModule):
                                                                          window_shape=int(self.S),
                                                                          axis=0)  # Shape [N-S+1, F, S]
                 self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
-                if config.ROTATIONAL_EQUIVARIANCE:
-                    self.features = self.windowed_rotation(self.features)
-            else:
-                if config.ROTATIONAL_EQUIVARIANCE:
-                    self.features = self.rotation(self.features)
+
+            if config.ROTATIONAL_EQUIVARIANCE:
+                self.features = self.rotation(self.features)
 
         if config.MAC:  # MAC rejects float64
             self.features = self.features.astype(np.float32)
@@ -85,7 +82,7 @@ class NNDataModule(LightningDataModule):
             self.target_scaler = Scaler()
             self.inputs = self.input_scaler.fit_transform(self.features[..., self.input_slice])
             self.targets = self.target_scaler.fit_transform(self.features[..., self.target_slice])
-            self.features = np.column_stack((self.inputs, self.targets))
+            self.features = np.concatenate((self.inputs, self.targets), axis=-1)
 
             if config.SCALER_FILE and not os.path.exists(config.SCALER_FILE):
                 joblib.dump({
@@ -99,23 +96,20 @@ class NNDataModule(LightningDataModule):
 
     @staticmethod
     def rotation(data):
-        x = data[..., :7]
-        x[..., 2] = np.random.uniform(0, np.pi, size=x.shape[0])
-        x[..., 3] = np.random.uniform(-np.pi, np.pi, size=x.shape[0])
-        return get_movements(x)
+        """
+        Randomly assigns values for theta and phi, leaving velocities and accelerations untouched
+        effectively scrubbing theta and phi dependence while keeping angular velocity and acceleration dependence
 
-    @staticmethod
-    def windowed_rotation(windowed_data):
-        x = windowed_data[..., :3]
-        cart = sph_to_cart_windowed(x)  # [N, S, 3]
-        R = Rot.random(x.shape[0]).as_matrix()
-        rotated = np.einsum('nij,nsj->nsi', R, cart)  # [N, S, 3]
-        sph = cart_to_sph_windowed(rotated)  # [N, S, 3]
+        works for both windowed and non-windowed data
 
-        v = socfdw(sph)  # [N, S, 3]
-        y = socfdw(v)
+        :param data: [..., F] shaped array where columns at index 2 and 3 are theta and phi respectively
+        :return: data-like array with random theta and phi
+        """
+        x = data.copy()
+        x[..., 2] = np.random.uniform(0, np.pi, size=x.shape[:-1])
+        x[..., 3] = np.random.uniform(-np.pi, np.pi, size=x.shape[:-1])
 
-        return np.concatenate((sph, v, y), axis=-1)
+        return x
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,

@@ -14,7 +14,7 @@ MAC = False
 ####################
 HIDDEN_DIM = 256
 NUM_LAYERS = 3
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 1e-3
 USE_BN = False
 USE_SE = True
 SE_REDUCTION = 2
@@ -34,7 +34,7 @@ SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
 ####################
 #  BATCH AND DATA  #
 ####################
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 NUM_SAMPLES = None  # None for all available
 STEP = 1
 NUM_WORKERS = 8

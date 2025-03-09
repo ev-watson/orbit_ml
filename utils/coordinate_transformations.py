@@ -139,7 +139,6 @@ def alignment_matrix(vec1, vec2):
     return rotation_matrix
 
 
-@njit
 def apply_rotation(v, R):
     """
     Applies rotation matrix R to vector v

@@ -46,7 +46,7 @@ optimizer_functions = {
 base_opt_kwargs = {
     'betas1': {'type': 'float', 'low': 0.9, 'high': 0.99},  # Log inherently included in sampler function in utils
     'betas2': {'type': 'float', 'low': 0.99, 'high': 0.9999},
-    'eps': {'type': 'float', 'default': 1e-10},
+    'eps': {'type': 'float', 'default': 1e-8},
     'weight_decay': {'type': 'float', 'low': 1e-10, 'high': 1e-2, 'log': True},
 }
 
@@ -117,7 +117,7 @@ def objective(trial):
     clear_local_ckpt_files()
 
     params = {
-        'lr': trial.suggest_float('lr', 1e-7, 1e-2),
+        'lr': trial.suggest_float('lr', 1e-7, 1e0),
         'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024]),
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
