@@ -99,7 +99,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
     if not suppress:
         print_block("BEGINNING RANDOM GNN TESTING", err=err)
 
-    targets = np.load('gnn_targets.npy')
+    targets = np.load(config.TARGETS_FILE)
     inp_slice = config.retrieve('model').input_slice
     targ_slice = config.retrieve('model').output_slice
     ntargs = config.retrieve('model').output_dim

@@ -118,13 +118,13 @@ def objective(trial):
 
     params = {
         'lr': trial.suggest_float('lr', 1e-7, 1e0),
-        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024]),
+        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024, 2048]),
         'num_layers': trial.suggest_int('num_layers', 2, 8),
         # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
         'drop_rate': trial.suggest_float('drop_rate', 5e-3, 0.5),
         'dropout_frequency': trial.suggest_int('dropout_frequency', 1, 4),
         # 'se_block': trial.suggest_categorical('se_block', [True, False]),
-        'se_reduction': trial.suggest_categorical('se_reduction', [2, 4, 8, 16]),
+        'se_reduction': trial.suggest_categorical('se_reduction', [2, 4, 8, 16, 32, 64, 128]),
         # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
         # 'windowed': trial.suggest_categorical('windowed', [True, False]),
         # 'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
@@ -187,7 +187,7 @@ def objective(trial):
 
     # return trainer.callback_metrics['test_loss'].item()
 
-    rtrials = 500000
+    rtrials = 921600
     if args.model == 'interp':
         mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
     else:
@@ -196,12 +196,18 @@ def objective(trial):
     return mae.item()
 
 
-sampler = optuna.samplers.NSGAIISampler(
-    population_size=100,
-    crossover_prob=0.915,
-    mutation_prob=0.12,
-    swapping_prob=0.55,
+# sampler = optuna.samplers.NSGAIISampler(
+#     population_size=100,    # 50
+#     crossover_prob=0.915,   # 0.9
+#     swapping_prob=0.51,     # 0.5
+#     mutation_prob=0.08,     # None
+# )
+
+sampler = optuna.samplers.TPESampler(
+    n_startup_trials=15,  # 10
+    n_ei_candidates=36,  # 24
 )
+
 study_name = f"{args.model}_{args.opt}_study"
 storage_name = f"sqlite:///{study_name}.db"
 study = optuna.create_study(direction='minimize',

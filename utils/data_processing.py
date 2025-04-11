@@ -68,7 +68,7 @@ def load_np(data_name, file_path=None, nrows=None, step=1, reload=True, chunk_si
     :param file_path: str, Path to the CSV file containing the data.
     :param nrows: int, Number of rows to load.
     :param step: int, Number of steps to slice.
-    :param reload: bool, Whether to reload the data.
+    :param reload: bool, Whether to reload the data. If no, save data to data_name.npy
     :param chunk_size: int, Size of each chunk for processing Julian dates.
     :return: an array containing the position, velocity, and time, vectors.
     """

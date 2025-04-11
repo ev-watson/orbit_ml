@@ -131,12 +131,11 @@ class GNN(BaseArch, PredictorMixin):
         x = self.dropout_input(x)
         for i, layer in enumerate(self.mlp_layers):
             x = layer(x)
-            if i % self.dropout_frequency == 0:
-                x = self.dropouts[i](x)
-            else:
-                x = self.activation(x)
+            x = self.activation(x)
             if self.use_se:
                 x, attn = self.se_block[i](x)
+            if i % self.dropout_frequency == 0:
+                x = self.dropouts[i](x)
         x = self.output_layer(x)
         return x
 

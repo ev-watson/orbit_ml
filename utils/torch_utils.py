@@ -9,6 +9,9 @@ import config
 
 
 class Scaler:
+    """
+    Standard scaler, removes mean and scales to unit variance
+    """
     def __init__(self):
         self.mean = None  # Mean per feature
         self.std = None  # Standard deviation per feature
@@ -73,7 +76,9 @@ class Scaler:
             std = std.view(1, -1)  # Shape: [1, F]
 
         scaled_tensor = (tensor - mean) / std
-        return scaled_tensor
+
+        # change to default dtype so non-mac scaler pickles can be compatible with mac
+        return scaled_tensor.to(dtype=torch.get_default_dtype())
 
     def inverse_transform(self, scaled_tensor: torch.Tensor) -> torch.Tensor:
         """

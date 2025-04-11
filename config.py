@@ -7,7 +7,7 @@ SEED = 42
 TYPE = 'gnn'
 ROTATIONAL_EQUIVARIANCE = True
 WINDOWED = False
-MAC = False
+MAC = True
 
 ####################
 # MODEL PARAMETERS #
@@ -17,7 +17,7 @@ NUM_LAYERS = 3
 LEARNING_RATE = 1e-3
 USE_BN = False
 USE_SE = True
-SE_REDUCTION = 2
+SE_REDUCTION = 16
 
 #####################
 # TRAINING SETTINGS #
@@ -26,9 +26,9 @@ MAX_EPOCHS = 25
 ENABLE_EARLY_STOPPING = True
 PATIENCE = 7
 GRADIENT_CLIP_VAL = 1.5
-WEIGHT_DECAY = 3e-5
-DROP_RATE = 0.136
-DROPOUT_FREQUENCY = 3   # Every X layers a dropout layer will occur
+WEIGHT_DECAY = 7e-3
+DROP_RATE = 0.5
+DROPOUT_FREQUENCY = 3   # Every X layers a dropout layer will occur, so less is more frequent
 SEQUENCE_LENGTH = 200  # EXPONENTIALLY AFFECTS TIME start low ~100
 
 ####################
@@ -52,6 +52,7 @@ ON_STEP = False
 #    FILE NAMES    #
 ####################
 GINPUTS_FILE = 'ginputs.npy'
+TARGETS_FILE = 'gnn_targets.npy'
 INTERP_FILE = 'interp_data.npy'
 SCALER_FILE = f'{TYPE}_scaler.pkl'  # None to turn off saving
 STATE_FILE = 'model_state.pth'

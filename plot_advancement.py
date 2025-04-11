@@ -73,8 +73,9 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
     with ProgressBar():
         data = daskdf.compute()
     print_block("COMPUTING RANGE")
-    data['RG'] = np.sqrt(data['X'] ** 2 + data['Y'] ** 2 + data['Z'] ** 2)
+    data['RG'] = np.sqrt(data['X']**2 + data['Y']**2 + data['Z']**2)
 
+    print_block("COMPUTING PERIHELION INDICES")
     if perihelion_indices is None:
         peri_indices = get_peri_indices(np.asarray(data['RG']))
     else:
@@ -119,7 +120,7 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
         ax.plot(adv_times, adv_list)
 
         params, covar = curve_fit(quadplusperiodic, adv_times, adv_list)
-        fig.suptitle(f"w: {params[1]:.3f} as/yr, Q: {params[2]:.4f} as/yr^2")
+        fig.suptitle(f"w: {params[1]:.3f} as/cy, Q: {params[2]:.4f} as/cy^2")
         fig.savefig(f"plot_advancement_{ref_year:.0f}.png", dpi=300)
         plt.show()
         plt.close()

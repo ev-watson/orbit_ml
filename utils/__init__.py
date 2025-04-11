@@ -3,7 +3,7 @@ import torch
 
 import config
 
-plotly.io.templates.default = 'plotly_dark'
+plotly.io.templates.default = 'simple_white'
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
 
 from .analysis import (
