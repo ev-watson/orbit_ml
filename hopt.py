@@ -116,50 +116,60 @@ def objective(trial):
     seed_everything(seed)
     clear_local_ckpt_files()
 
-    params = {
-        'lr': trial.suggest_float('lr', 1e-7, 1e0),
-        'hidden_dim': trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024, 2048]),
-        'num_layers': trial.suggest_int('num_layers', 2, 8),
-        # 'batch_size': trial.suggest_categorical('batch_size', [4, 8, 16, 32]),
-        'drop_rate': trial.suggest_float('drop_rate', 5e-3, 0.5),
-        'dropout_frequency': trial.suggest_int('dropout_frequency', 1, 4),
-        # 'se_block': trial.suggest_categorical('se_block', [True, False]),
-        'se_reduction': trial.suggest_categorical('se_reduction', [2, 4, 8, 16, 32, 64, 128]),
-        # 'rotational_equivariance': trial.suggest_categorical('rotational_equivariance', [True, False]),
-        # 'windowed': trial.suggest_categorical('windowed', [True, False]),
-        # 'gradient_clip_val': trial.suggest_float('gradient_clip_val', 0.7, 1.5),
-        # 'activation_name': 'hardswish',
-        'activation_name': trial.suggest_categorical('activation', list(activation_functions.keys())),
-        # 'loss_name': 'zero-one',
-        'loss_name': trial.suggest_categorical('loss_name', list(loss_functions.keys())),
-        'optimizer': optimizer_functions[args.opt],
+    """
+    Build the hyperparameter dictionary and study parameter list.
+
+    This method ensures that the order of trial.suggest calls (study parameter list)
+    matches the hparam dictionary with support for hparam dependencies (e.g. 'dropout_frequency' depending on 'num_layers')
+    """
+    params = {}
+    loss_params = {}
+
+    # TRAINING
+    params['lr'] = trial.suggest_float('lr', 1e-7, 1e0)
+    # params['batch_size'] = trial.suggest_categorical('batch_size', [4, 8, 16, 32])
+    # params['gradient_clip_val'] = trial.suggest_float('gradient_clip_val', 0.7, 1.5)
+
+    # ARCHITECTURE
+    params['hidden_dim'] = trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024, 2048])
+    params['num_layers'] = trial.suggest_int('num_layers', 2, 8)
+    params['drop_rate'] = trial.suggest_float('drop_rate', 5e-3, 0.5)
+    params['dropout_frequency'] = trial.suggest_int('dropout_frequency', 1, params['num_layers'])
+    # params['se_block'] = trial.suggest_categorical('se_block', [True, False])
+    params['se_reduction'] = trial.suggest_categorical('se_reduction', [2, 4, 8, 16, 32, 64, 128])
+    # params['rotational_equivariance'] = trial.suggest_categorical('rotational_equivariance', [True, False])
+    # params['windowed'] = trial.suggest_categorical('windowed', [True, False])
+
+    # ALGORITHMS
+    # ---activation---
+    params['activation_name'] = trial.suggest_categorical('activation', list(activation_functions.keys()))
+
+    # ---loss---
+    params['loss_name'] = trial.suggest_categorical('loss_name', list(loss_functions.keys()))
+    params['loss'] = loss_functions[params['loss_name']]
+    if params['loss_name'] in loss_hyperparams:
+        loss_params = sample_hyperparams(trial, loss_hyperparams[params['loss_name']])
+    params['loss_kwargs'] = loss_params
+
+    # ---optimizer---
+    params['optimizer'] = optimizer_functions[args.opt]
+    params['optimizer_kwargs'] = sample_hyperparams(trial, optimizer_hyperparams[args.opt])
+
+    # ---scheduler---
+    params['scheduler_kwargs'] = {
+        'factor': trial.suggest_float('scheduler_factor', 0.01, .5),
+        'patience': trial.suggest_int('patience', 3, 6),
     }
+
     config.ROTATIONAL_EQUIVARIANCE = params.get('rotational_equivariance', config.ROTATIONAL_EQUIVARIANCE)
     config.WINDOWED = params.get('windowed', config.WINDOWED)
     if config.WINDOWED:
         params['seqlen'] = trial.suggest_categorical('seqlen', [50, 100, 150, 200, 250, 300])
         config.SEQUENCE_LENGTH = params['seqlen']
 
-    params['loss'] = loss_functions[params['loss_name']]
-    params['scheduler_kwargs'] = {
-        'factor': trial.suggest_float('scheduler_factor', 0.01, .5),
-        'patience': trial.suggest_int('patience', 3, 6),
-    }
+    config.update_hparams(params)
 
     data_module = NNDataModule()
-
-    if args.opt in optimizer_hyperparams:
-        optimizer_params = sample_hyperparams(trial, optimizer_hyperparams[args.opt])
-    else:
-        raise KeyError(f"{args.opt} not in registered optimizers")
-    params['optimizer_kwargs'] = optimizer_params
-
-    loss_params = {}
-    if params['loss_name'] in loss_hyperparams:
-        loss_params = sample_hyperparams(trial, loss_hyperparams[params['loss_name']])
-    params['loss_kwargs'] = loss_params
-
-    config.update_hparams(params)
 
     model = config.retrieve('model')(
         **params

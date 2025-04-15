@@ -37,7 +37,7 @@ def sample_hyperparams(trial, hyperparams):
     return sampled
 
 
-def print_best_optuna(db=None, pareto=True, single_pareto=None):
+def print_best_optuna(db=None, pareto=False, single_pareto=None):
     """
     Print best trial from optuna study, if db is none, finds all studies in cwd and prints them
     :param db: str, file name of study storage

@@ -134,7 +134,7 @@ class GNN(BaseArch, PredictorMixin):
             x = self.activation(x)
             if self.use_se:
                 x, attn = self.se_block[i](x)
-            if i % self.dropout_frequency == 0:
+            if (i+1) % self.dropout_frequency == 0:
                 x = self.dropouts[i](x)
         x = self.output_layer(x)
         return x
