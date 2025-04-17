@@ -83,11 +83,13 @@ def interp_test(model, ntrials=100, mape=False, suppress=False, err=False, verbo
     return print_analysis(pred_vals, vp_target, ntrials, mape, suppress, err, verbose, axis=mean_axis)
 
 
-def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=False, mean_axis=None, SR=False):
+def gnn_test(model, ntrials=100, batch_size=1024, mape=False, suppress=False, err=False, verbose=False, mean_axis=None, SR=False):
     """
     Performs random input testing to evaluate the accuracy of GNN's acceleration prediction.
+    ntrials will be rounded to nearest i
     :param model: GNN model
     :param ntrials: int, number of trials
+    :param batch_size: int, batch size for prediction, default 1024
     :param mape: bool, enable mape
     :param suppress: bool, if true, suppresses print statements.
     :param err: bool, enable printing to stderr as well.
@@ -126,7 +128,7 @@ def gnn_test(model, ntrials=100, mape=False, suppress=False, err=False, verbose=
 
     # Finds closest power of 2 that will make batch_size and num_batches as even as possible then multiplies by 2
     # batch_size = 2 ** (round(np.log2(np.sqrt(ntrials)))+1)
-    batch_size = 1024
+    batch_size = batch_size
     num_batches = int(np.ceil(ntrials / batch_size))
     if not suppress:
         print_block(f"{ntrials} TRIALS, {num_batches} BATCHES of {batch_size} SIZE", err=err)

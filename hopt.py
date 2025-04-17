@@ -13,6 +13,8 @@ from data_construction import *
 
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
 
+seed = config.SEED if config.SEED else np.random.randint(1, 10000)
+
 activation_functions = {
     'relu': F.relu,
     'gelu': F.gelu,
@@ -111,7 +113,6 @@ config.TYPE = args.model
 
 
 def objective(trial):
-    seed = config.SEED if config.SEED else np.random.randint(1, 10000)
     print_block(f"TRIAL: {trial.number}, SEED: {seed}", err=True)
     seed_everything(seed)
     clear_local_ckpt_files()
@@ -206,6 +207,7 @@ def objective(trial):
     return mae.item()
 
 
+# multi-objective sampler
 # sampler = optuna.samplers.NSGAIISampler(
 #     population_size=100,    # 50
 #     crossover_prob=0.915,   # 0.9
@@ -213,9 +215,11 @@ def objective(trial):
 #     mutation_prob=0.08,     # None
 # )
 
+# single-objective sampler
 sampler = optuna.samplers.TPESampler(
     n_startup_trials=15,  # 10
     n_ei_candidates=36,  # 24
+    seed=seed,
 )
 
 study_name = f"{args.model}_{args.opt}_study"
