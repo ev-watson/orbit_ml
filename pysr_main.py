@@ -164,7 +164,7 @@ plt.scatter(r, y_val, s=10, label='Validation Data')
 plt.scatter(r, y_pred, s=10, color='red', label='Model Prediction')
 plt.text(0.05, 0.95, rf"Model: ${latex_eq}$", transform=plt.gca().transAxes, verticalalignment='top')
 plt.legend()
-plt.savefig("pysr_main.png")
+plt.savefig(pysr_dir+"pysr_main.png")
 plt.show()
 
 
