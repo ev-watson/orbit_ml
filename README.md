@@ -54,3 +54,7 @@ bash run_eval.sh
 - PySR, SymPy
 - Optuna, SciPy, NumPy
 - astroquery (for Horizons data)
+
+## AI Disclosure
+
+AI-assisted tools (Claude, Anthropic) were used during development of this repository for documentation.
