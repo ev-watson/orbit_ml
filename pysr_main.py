@@ -37,7 +37,7 @@ evaluation_file = pysr_dir + 'evaluation.txt'
 # y = targets[slice(500000, 600000), 7].reshape(-1, 1)
 
 # --- MAIN RUN ---
-ckpt = 'hopt/checkpoints/gnn_nadam_328.ckpt'
+ckpt = 'tlogs/checkpoints/gnn_final.ckpt'
 gnnmodel = GNN.load_from_checkpoint(ckpt)
 
 print_block("RETRIEVING DATA")
@@ -64,7 +64,7 @@ column_dicts = dict(zip(variable_names, x_val.T))
 
 # initialize PySRRegressor favoring complexity
 model = PySRRegressor(
-    niterations=25 if swift else 500,
+    niterations=25 if swift else 100,
     binary_operators=["+", "-", "*", "/", "^"],
     unary_operators=["square", "cube", "sqrt", "sin", "cos", "tan", "exp"],
     constraints={
@@ -91,14 +91,14 @@ model = PySRRegressor(
     batching=True,
     batch_size=128 if swift else 32,
     # select_k_features=4,
-    tournament_selection_n=5,  # 10
-    tournament_selection_p=0.7,  # 0.86
+    tournament_selection_n=5,  # 10, lower = more diversity
+    tournament_selection_p=0.75,  # 0.86
     should_optimize_constants=True,
     weight_optimize=0.,  # 0.
     weight_simplify=0.0004,  # 0.0020
-    optimizer_nrestarts=5,  # 2
-    optimize_probability=0.16,  # 0.14
-    optimizer_iterations=12,  # 8
+    optimizer_nrestarts=2,  # 2
+    optimize_probability=0.12,  # 0.14
+    optimizer_iterations=8,  # 8
     parsimony=0.0010,  # 0.0032
     adaptive_parsimony_scaling=30.,  # 20.
     should_simplify=True,
@@ -107,8 +107,8 @@ model = PySRRegressor(
     maxsize=15 if swift else 30,    # 20
     maxdepth=None,
     populations=3 * cores,
-    population_size=33 if swift else 200,
-    ncycles_per_iteration=200 if swift else 6500,    # 550
+    population_size=33 if swift else 150,
+    ncycles_per_iteration=200 if swift else 5000,    # 550
     procs=cores,
     random_state=seed,
     verbosity=1,
@@ -116,7 +116,7 @@ model = PySRRegressor(
     equation_file=equation_file,
     delete_tempfiles=True,
     turbo=True,
-    warm_start=False,
+    warm_start=True,
     # cluster_manager='slurm' if not config.MAC else None,  # cluster manager is deprecated
 )
 
@@ -133,6 +133,9 @@ symbols_list = sorted(list(best_equation.free_symbols),
                       key=lambda s: variable_names.index(str(s)))
 predict = sp.lambdify(symbols_list, best_equation, modules='numpy')
 y_pred = predict(*[column_dicts[str(key)] for key in symbols_list])
+
+y_pred = np.array(y_pred).ravel()
+y_val = np.array(y_val).ravel()
 
 # calculate evaluation metrics
 mse = np.mean((y_val - y_pred) ** 2)

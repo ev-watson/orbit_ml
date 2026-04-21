@@ -63,7 +63,7 @@ model = GNN(
 )
 
 trainer = Trainer(
-    max_epochs=5,
+    max_epochs=25,
     callbacks=[EarlyStopping(monitor='val_loss', patience=config.PATIENCE, mode='min'),
                GradientNormCallback(),
                LearningRateMonitor(logging_interval='step' if config.ON_STEP else 'epoch'),

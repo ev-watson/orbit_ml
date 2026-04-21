@@ -1,0 +1,43 @@
+# numpy / data artifacts
+*.npy
+*.csv
+!version_1.csv
+
+# compiled Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# macOS metadata
+.DS_Store
+
+# IDE / editor config
+.idea/
+.vscode/
+
+# virtual environments
+.venv/
+
+# training logs, checkpoints, temp
+tlogs/
+checkpoints/
+testing/
+pysr_temp/
+hopt/gnn_adamw_logs/
+studies/
+
+# large binary artifacts
+*.ckpt
+*.pkl
+*.db
+
+# local dev / project management
+CLAUDE.md
+prompts/
+reference-sheets/
+get_ckpts.sh
+cleanup.sh
+media/
+
+# result text files (regenerable)
+results_*.txt
