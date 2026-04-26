@@ -115,6 +115,51 @@ class Scaler:
         return original_tensor
 
 
+class ScalerBundle:
+    """
+    Small wrapper around the paired input/target scalers saved during training.
+
+    Keeping this wrapper as the only place that knows the on-disk pickle format avoids the
+    previous pattern of callers loading ``{'input_scaler': ..., 'target_scaler': ...}``
+    directly and hand-scaling in slightly different ways.
+    """
+    def __init__(self, input_scaler, target_scaler):
+        self.input_scaler = input_scaler
+        self.target_scaler = target_scaler
+
+    @classmethod
+    def load(cls, path=None):
+        path = path if path is not None else config.SCALER_FILE
+        raw = joblib.load(path)
+        if isinstance(raw, cls):
+            return raw
+        return cls(raw['input_scaler'], raw['target_scaler'])
+
+    @classmethod
+    def maybe_load(cls, path=None):
+        if not config.SCALE:
+            return None
+        return cls.load(path)
+
+    def dump(self, path=None):
+        path = path if path is not None else config.SCALER_FILE
+        joblib.dump({
+            'input_scaler': self.input_scaler,
+            'target_scaler': self.target_scaler,
+        }, path)
+
+    def scale_inputs(self, inputs):
+        return self.input_scaler.transform(inputs)
+
+    def unscale_targets(self, targets):
+        return self.target_scaler.inverse_transform(targets)
+
+    def scale_graph_batch(self, batch):
+        scaled = dict(batch)
+        scaled['nodes'] = self.scale_inputs(batch['nodes'])
+        return scaled
+
+
 class SEBlock(LightningModule):
     def __init__(self, channel, reduction=config.SE_REDUCTION):
         super(SEBlock, self).__init__()
@@ -213,6 +258,20 @@ def scatter_sum(messages, dst_index, num_nodes):
     return out
 
 
+def fully_connected_edges(num_bodies, device=None):
+    """
+    Build directed edge-index tensors for a fully connected graph with no self-loops.
+    """
+    src, dst = [], []
+    for i in range(num_bodies):
+        for j in range(num_bodies):
+            if i != j:
+                src.append(i)
+                dst.append(j)
+    return (torch.tensor(src, dtype=torch.long, device=device),
+            torch.tensor(dst, dtype=torch.long, device=device))
+
+
 class PredictorMixin:
     """
     Generic prediction mixin for use with unscaled inputs on a model that was trained with scaled inputs
@@ -230,17 +289,14 @@ class PredictorMixin:
         """
         self.eval()
         device = next(self.parameters()).device
-        if config.SCALE:
-            scalers = joblib.load(config.SCALER_FILE)
-            input_scaler = scalers['input_scaler']
-            target_scaler = scalers['target_scaler']
-            input_data = input_scaler.transform(X.to(dtype=torch.get_default_dtype(), device=device))
-            with torch.no_grad():
-                output_scaled = self.forward(input_data)
-            out = target_scaler.inverse_transform(output_scaled)
-        else:
-            with torch.no_grad():
-                out = self.forward(X.to(dtype=torch.get_default_dtype(), device=device))
+        input_data = X.to(dtype=torch.get_default_dtype(), device=device)
+        scalers = ScalerBundle.maybe_load()
+        if scalers is not None:
+            input_data = scalers.scale_inputs(input_data)
+        with torch.no_grad():
+            out = self.forward(input_data)
+        if scalers is not None:
+            out = scalers.unscale_targets(out)
         return out
 
 

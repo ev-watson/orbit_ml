@@ -1,13 +1,12 @@
 import argparse
 
-import joblib
 import numpy as np
 import torch
 from scipy.integrate import solve_ivp
 
 import config
 from models import MPNN
-from utils import print_block
+from utils import fully_connected_edges, print_block
 
 
 def newton_force(r_vec, gm=config.GM_SUN):
@@ -25,19 +24,16 @@ def newton_force(r_vec, gm=config.GM_SUN):
 def gnn_force(model, r_vec, v_vec,
               merc_mass=config.M_MERC,
               sun_mass=config.M_SUN,
-              scalers=None,
               num_bodies=2):
     """
     Acceleration on Mercury predicted by the trained message-passing GNN. Builds a single-snapshot
-    Sun + Mercury graph, scales it the way the model was trained, runs a forward pass, and pulls
-    Mercury's predicted acceleration row.
+    Sun + Mercury graph and delegates all scaling to ``MPNN.predict``.
 
     :param model: MPNN, the trained graph network in eval mode.
     :param r_vec: array-like of shape (3,), Mercury heliocentric position (m).
     :param v_vec: array-like of shape (3,), Mercury heliocentric velocity (m/s).
     :param merc_mass: float, Mercury mass (kg).
     :param sun_mass: float, Sun mass (kg).
-    :param scalers: dict, scaler bundle saved during training. None -> use raw values.
     :param num_bodies: int, total bodies in the snapshot. Must match training topology.
     :return: np.ndarray of shape (3,), predicted acceleration in m / s^2.
     """
@@ -48,30 +44,15 @@ def gnn_force(model, r_vec, v_vec,
     snap[0, 1, 4:7] = v_vec
 
     device = next(model.parameters()).device
-    if scalers is not None:
-        snap_t = torch.from_numpy(snap).to(device=device, dtype=torch.get_default_dtype())
-        snap_t = scalers['input_scaler'].transform(snap_t)
-    else:
-        snap_t = torch.from_numpy(snap).to(device=device, dtype=torch.get_default_dtype())
-
-    src, dst = [], []
-    for i in range(num_bodies):
-        for j in range(num_bodies):
-            if i != j:
-                src.append(i)
-                dst.append(j)
+    src_index, dst_index = fully_connected_edges(num_bodies, device=device)
     batch = {
-        'nodes': snap_t,
-        'src_index': torch.tensor(src, dtype=torch.long, device=device),
-        'dst_index': torch.tensor(dst, dtype=torch.long, device=device),
+        'nodes': torch.from_numpy(snap).to(device=device, dtype=torch.get_default_dtype()),
+        'src_index': src_index,
+        'dst_index': dst_index,
     }
 
     with torch.no_grad():
-        pred_scaled = model(batch)                 # [1, B, 3] in scaled-acceleration space
-    if scalers is not None:
-        pred = scalers['target_scaler'].inverse_transform(pred_scaled)
-    else:
-        pred = pred_scaled
+        pred = model.predict(batch)
     return pred[0, 1].cpu().numpy()                # Mercury row
 
 
@@ -132,8 +113,11 @@ if __name__ == "__main__":
     else:
         model = MPNN.load_from_checkpoint(args.ckpt)
         model.eval()
-        scalers = joblib.load(args.scaler) if args.scaler else None
-        force_fn = lambda r, v: gnn_force(model, r, v, scalers=scalers)
+        if args.scaler:
+            config.SCALER_FILE = args.scaler
+        else:
+            config.SCALE = False
+        force_fn = lambda r, v: gnn_force(model, r, v)
 
     y0 = initial_state(args.merc_csv)
     t_span = (0.0, args.t_end)

@@ -6,20 +6,22 @@ import config
 plotly.io.templates.default = 'simple_white'
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
 
+from .torch_utils import (
+    Scaler,
+    ScalerBundle,
+    GradientNormCallback,
+    SEBlock,
+    MLPBlock,
+    PredictorMixin,
+    scatter_sum,
+    fully_connected_edges,
+)
 from .analysis import (
     separate_orbits,
     print_analysis,
     interp_test,
     gnn_test,
     semlp_test,
-)
-from .torch_utils import (
-    Scaler,
-    GradientNormCallback,
-    SEBlock,
-    MLPBlock,
-    PredictorMixin,
-    scatter_sum,
 )
 from .coordinate_transformations import (
     sph_to_cart_windowed,

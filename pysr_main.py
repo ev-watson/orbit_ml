@@ -8,10 +8,8 @@ import sympy as sp
 
 import config
 from models import MPNN
-from utils import print_block, gnn_test
+from utils import ScalerBundle, print_block, gnn_test
 
-if config.MAC:
-    pass
 from pysr import PySRRegressor
 
 # for testing
@@ -61,7 +59,7 @@ print(f"Channel std (first 10 shown): {np.round(channel_std[:10], 6)}")
 # trained on scaled inputs, the symbolic regression below operates in the same scaled space.
 # The scaler bundle is shipped alongside the equations so the closed-form expression can be
 # composed back into physical units downstream.
-scalers = joblib.load(config.SCALER_FILE) if config.SCALE else None
+scalers = ScalerBundle.maybe_load()
 F_in = X.shape[-1] // 2
 src_var_names = ['mass_src', 'x_src', 'y_src', 'z_src', 'vx_src', 'vy_src', 'vz_src'][:F_in]
 dst_var_names = ['mass_dst', 'x_dst', 'y_dst', 'z_dst', 'vx_dst', 'vy_dst', 'vz_dst'][:F_in]

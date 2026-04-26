@@ -1,10 +1,10 @@
 import numpy as np
 import torch
-import joblib
 
 import config
 from utils.logging_utils import print_block
 from utils.losses import calc_mae, calc_mape
+from utils.torch_utils import ScalerBundle, fully_connected_edges
 
 
 def separate_orbits(inputs):
@@ -181,10 +181,10 @@ def gnn_test(model, ntrials=100, batch_size=1024, mape=False, suppress=False, er
     device = next(model.parameters()).device
     V = torch.from_numpy(sampled[..., inp_slice]).to(device=device, dtype=torch.get_default_dtype())
     Y = torch.from_numpy(sampled[..., targ_slice]).to(device=device, dtype=torch.get_default_dtype())
-    scalers = joblib.load(config.SCALER_FILE) if config.SCALE else None
-    V_model = scalers['input_scaler'].transform(V) if scalers is not None else V
+    scalers = ScalerBundle.maybe_load()
+    scaled_V = scalers.scale_inputs(V) if scalers is not None else V
 
-    src_index, dst_index = _fully_connected_edges(num_bodies)
+    src_index, dst_index = fully_connected_edges(num_bodies)
     src_index = src_index.to(device)
     dst_index = dst_index.to(device)
     predict_mask = torch.arange(1, num_bodies, dtype=torch.long, device=device)
@@ -212,7 +212,7 @@ def gnn_test(model, ntrials=100, batch_size=1024, mape=False, suppress=False, er
                 # Distillation targets are the internal edge-function inputs/messages, so this
                 # intentionally uses the same scaled node space seen by phi_e during training.
                 scaled_batch = dict(batch)
-                scaled_batch['nodes'] = V_model[s:e]
+                scaled_batch['nodes'] = scaled_V[s:e]
                 ei, m = model.edge_messages(scaled_batch)
                 edge_inputs.append(ei)
                 messages.append(m)
@@ -230,21 +230,3 @@ def gnn_test(model, ntrials=100, batch_size=1024, mape=False, suppress=False, er
     if not suppress:
         print_block("BEGINNING ANALYSIS", err=err)
     return print_analysis(g, t, ntrials, mape, suppress, err, verbose, axis=mean_axis)
-
-
-def _fully_connected_edges(num_bodies):
-    """
-    Build directed edge_index tensors for a fully connected graph of ``num_bodies`` nodes
-    (no self-loops). Mirrors the helper in NNDataModule so ``gnn_test`` can run standalone.
-
-    :param num_bodies: int.
-    :return: tuple (src_index, dst_index) of torch.LongTensor with shape (M,).
-    """
-    src, dst = [], []
-    for i in range(num_bodies):
-        for j in range(num_bodies):
-            if i != j:
-                src.append(i)
-                dst.append(j)
-    return (torch.tensor(src, dtype=torch.long),
-            torch.tensor(dst, dtype=torch.long))

@@ -1,4 +1,3 @@
-import joblib
 import numpy as np
 import torch.nn.functional as F
 from lightning.pytorch import LightningModule
@@ -289,13 +288,14 @@ class MPNN(BaseArch, PredictorMixin):
         if batch.get('predict_mask') is not None:
             model_batch['predict_mask'] = batch['predict_mask'].to(device=device)
 
-        if config.SCALE:
-            scalers = joblib.load(config.SCALER_FILE)
-            model_batch['nodes'] = scalers['input_scaler'].transform(model_batch['nodes'])
-            output_scaled = self.forward(model_batch)
-            return scalers['target_scaler'].inverse_transform(output_scaled)
+        scalers = ScalerBundle.maybe_load()
+        if scalers is not None:
+            model_batch = scalers.scale_graph_batch(model_batch)
 
-        return self.forward(model_batch)
+        out = self.forward(model_batch)
+        if scalers is not None:
+            out = scalers.unscale_targets(out)
+        return out
 
     @torch.no_grad()
     def edge_messages(self, batch):

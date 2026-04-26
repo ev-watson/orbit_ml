@@ -1,6 +1,5 @@
 import os
 
-import joblib
 from lightning.pytorch import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 
@@ -97,9 +96,9 @@ class NNDataModule(LightningDataModule):
                 raise ValueError(
                     f"GraphDataset expects features with shape [T, B, F]; got {self.features.shape}. "
                     f"Run utils.data_processing.build_graph_snapshots() to produce {config.GRAPH_FILE}."
-                )
+            )
             self.num_bodies = self.features.shape[1]
-            self.src_index, self.dst_index = self._fully_connected_edges(self.num_bodies)
+            self.src_index, self.dst_index = fully_connected_edges(self.num_bodies)
             # By default predict every body's acceleration except the Sun's (held fixed at index 0).
             self.predict_mask = torch.arange(1, self.num_bodies, dtype=torch.long)
 
@@ -137,32 +136,11 @@ class NNDataModule(LightningDataModule):
             self.features = np.concatenate((self.inputs, self.targets), axis=-1)
 
             if config.SCALER_FILE and not os.path.exists(config.SCALER_FILE):
-                joblib.dump({
-                    'input_scaler': self.input_scaler,
-                    'target_scaler': self.target_scaler,
-                }, config.SCALER_FILE)
+                ScalerBundle(self.input_scaler, self.target_scaler).dump(config.SCALER_FILE)
 
         self.train_dataset = self.dataset(self.features[:train_size])
         self.val_dataset = self.dataset(self.features[train_size:train_size + val_size])
         self.test_dataset = self.dataset(self.features[train_size + val_size:])
-
-    @staticmethod
-    def _fully_connected_edges(num_bodies):
-        """
-        Build directed edge_index tensors for a fully connected graph of ``num_bodies`` nodes
-        (no self-loops). M = num_bodies * (num_bodies - 1) directed edges.
-
-        :param num_bodies: int.
-        :return: tuple (src_index, dst_index) of torch.LongTensor with shape (M,).
-        """
-        src, dst = [], []
-        for i in range(num_bodies):
-            for j in range(num_bodies):
-                if i != j:
-                    src.append(i)
-                    dst.append(j)
-        return (torch.tensor(src, dtype=torch.long),
-                torch.tensor(dst, dtype=torch.long))
 
     @staticmethod
     def _rotation_augment(graph_features):
