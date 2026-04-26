@@ -1,3 +1,4 @@
+import joblib
 import numpy as np
 import torch.nn.functional as F
 from lightning.pytorch import LightningModule
@@ -87,8 +88,13 @@ class MLP(BaseArch):
         return x
 
 
-@config.register('gnn')
-class GNN(BaseArch, PredictorMixin):
+@config.register('semlp')
+class SEMLP(BaseArch, PredictorMixin):
+    """
+    Legacy 'GNN' from the first iteration of this project: an MLP with squeeze-and-excitation
+    channel gating between layers, fed flat per-timestep features. Kept here as a baseline only;
+    it is not a graph network and does not perform message passing.
+    """
     input_slice = slice(1, 7)
     output_slice = slice(7, 8)
     input_dim = len(range(*input_slice.indices(10)))
@@ -118,10 +124,6 @@ class GNN(BaseArch, PredictorMixin):
 
         self.save_hyperparameters()
 
-        # self.m = 1.652e-7    # mass of merc in M_solar
-        # self.m = 0.3301e24   # mass of merc in kg
-        # self.mass_merc = nn.Parameter(torch.tensor([0.05], dtype=torch.get_default_dtype()), requires_grad=True)
-
     def forward(self, x):
         if self.use_se:
             x, attn = self.se_input(x)
@@ -139,19 +141,179 @@ class GNN(BaseArch, PredictorMixin):
         x = self.output_layer(x)
         return x
 
-    # def forward(self, merc_eph):
-    #     param_device = next(self.parameters()).device
-    #     x = merc_eph.to(param_device).clone()
-    #
-    #     batch_size = x.size(0)
-    #     solmass = torch.ones(batch_size, 1, device=param_device)
-    #     mercmass = torch.clamp(self.mass_merc.expand(batch_size, 1), 0, 0.5)
-    #
-    #     inputs = torch.cat([x, solmass, mercmass], dim=1)
-    #     force_vec = self.mlp(inputs)
-    #     acceleration = force_vec / self.mass_merc
-    #
-    #     return acceleration
+
+@config.register('gnn')
+class MPNN(BaseArch, PredictorMixin):
+    """
+    Cranmer-style message-passing graph neural network for orbital dynamics.
+
+    Each input is a graph snapshot of B bodies with per-node features
+    ``[mass, x, y, z, vx, vy, vz]``; the per-node output is the body's acceleration
+    ``[ax, ay, az]``. The forward pass evaluates a learned edge function ``phi_e`` on every ordered
+    pair (i, j) to produce a low-dimensional message ``m_ij``, sums incoming messages at each
+    destination node, then applies a learned node function ``phi_v`` to predict the per-node
+    target. An L1 regularization term on messages (``msg_l1``) encourages a sparse, interpretable
+    bottleneck so that each active message channel can later be distilled to a closed-form
+    expression by symbolic regression (the Cranmer recipe).
+
+    This module assumes a fixed graph topology shared across the batch — the dataset emits
+    identical edge_index / dst_index tensors per snapshot — which is appropriate for fully
+    connected N-body problems with constant body count.
+    """
+    # Per-node feature slicing on the [F = 10] last axis of each snapshot tensor.
+    input_slice = slice(0, 7)       # mass, x, y, z, vx, vy, vz
+    output_slice = slice(7, 10)     # ax, ay, az
+    input_dim = len(range(*input_slice.indices(10)))
+    output_dim = len(range(*output_slice.indices(10)))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.node_input_dim = kwargs.get('node_input_dim', self.input_dim)
+        self.node_output_dim = kwargs.get('node_output_dim', self.output_dim)
+        self.edge_hidden_dim = kwargs.get('edge_hidden_dim', config.EDGE_HIDDEN_DIM)
+        self.edge_layers = kwargs.get('edge_layers', config.EDGE_LAYERS)
+        self.node_hidden_dim = kwargs.get('node_hidden_dim', config.NODE_HIDDEN_DIM)
+        self.node_layers = kwargs.get('node_layers', config.NODE_LAYERS)
+        self.msg_dim = kwargs.get('msg_dim', config.MSG_DIM)
+        self.msg_l1 = kwargs.get('msg_l1', config.MSG_L1)
+        self.drop_rate = kwargs.get('drop_rate', config.DROP_RATE)
+        self.dropout_frequency = kwargs.get('dropout_frequency', config.DROPOUT_FREQUENCY)
+        self.use_se = kwargs.get('se_block', config.USE_SE)
+        self.se_reduction = kwargs.get('se_reduction', config.SE_REDUCTION)
+
+        self.edge_model = MLPBlock(
+            input_dim=2 * self.node_input_dim,
+            hidden_dim=self.edge_hidden_dim,
+            output_dim=self.msg_dim,
+            num_layers=self.edge_layers,
+            activation=self.activation,
+            drop_rate=self.drop_rate,
+            dropout_frequency=self.dropout_frequency,
+            use_se=self.use_se,
+            se_reduction=self.se_reduction,
+        )
+        self.node_model = MLPBlock(
+            input_dim=self.node_input_dim + self.msg_dim,
+            hidden_dim=self.node_hidden_dim,
+            output_dim=self.node_output_dim,
+            num_layers=self.node_layers,
+            activation=self.activation,
+            drop_rate=self.drop_rate,
+            dropout_frequency=self.dropout_frequency,
+            use_se=self.use_se,
+            se_reduction=self.se_reduction,
+        )
+
+        self.last_messages = None       # cached for L1 reg and for symbolic distillation
+        self.attns = None               # passthrough so BaseArch logging hook stays happy
+
+        self.save_hyperparameters()
+
+    def forward(self, batch):
+        """
+        :param batch: dict with keys
+            - 'nodes':      tensor (B, N, F_in)        per-node input features
+            - 'src_index':  tensor (M,) long           source node index of each directed edge
+            - 'dst_index':  tensor (M,) long           destination node index of each directed edge
+            - 'predict_mask' (optional): tensor (N,) bool indicating which nodes contribute to loss
+        :return: tensor (B, N, F_out), per-node predictions (e.g. accelerations).
+        """
+        V = batch['nodes']
+        src_index = batch['src_index']
+        dst_index = batch['dst_index']
+        N = V.shape[1]
+
+        V_src = V.index_select(1, src_index)        # (B, M, F_in)
+        V_dst = V.index_select(1, dst_index)        # (B, M, F_in)
+        edge_input = torch.cat([V_src, V_dst], dim=-1)
+        messages = self.edge_model(edge_input)      # (B, M, msg_dim)
+        self.last_messages = messages
+
+        agg = scatter_sum(messages, dst_index, num_nodes=N)  # (B, N, msg_dim)
+        node_input = torch.cat([V, agg], dim=-1)
+        return self.node_model(node_input)          # (B, N, F_out)
+
+    def _masked_loss(self, y_hat, y, mask):
+        """
+        Mean per-target-component loss restricted to the predict-masked nodes.
+        """
+        if mask is not None:
+            y_hat = y_hat[:, mask, :]
+            y = y[:, mask, :]
+        return self.loss(y_hat, y, **self.loss_kwargs)
+
+    def _shared_step(self, batch, stage):
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = self._masked_loss(y_hat, y.view_as(y_hat), x.get('predict_mask'))
+        if self.msg_l1 and stage == 'train' and self.last_messages is not None:
+            loss = loss + self.msg_l1 * self.last_messages.abs().mean()
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self._shared_step(batch, 'train')
+        self.log('train_loss', loss, sync_dist=True, prog_bar=True, logger=True, on_epoch=True,
+                 on_step=config.ON_STEP)
+        if config.LOG_ATTN and self.last_messages is not None:
+            self.log('msg_abs_mean', self.last_messages.abs().mean(),
+                     sync_dist=True, logger=True, on_epoch=True, on_step=config.ON_STEP)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._shared_step(batch, 'val')
+        self.log('val_loss', loss, sync_dist=True, prog_bar=True, logger=True, on_epoch=True, on_step=False)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self._shared_step(batch, 'test')
+        self.log('test_loss', loss, sync_dist=True, prog_bar=True, logger=True)
+        return loss
+
+    @torch.no_grad()
+    def predict(self, batch):
+        """
+        Prediction method for raw, unscaled graph batches. This mirrors ``PredictorMixin`` for
+        the graph-specific forward signature: ``batch`` must be a dict with raw physical-unit
+        ``nodes`` plus the usual edge-index tensors. The returned acceleration is inverse-scaled
+        back to physical units when training used scalers.
+
+        :param batch: dict accepted by :meth:`forward`, with unscaled ``nodes``.
+        :return: tensor (B, N, F_out), predictions in target physical units.
+        """
+        self.eval()
+        device = next(self.parameters()).device
+        model_batch = dict(batch)
+        model_batch['nodes'] = batch['nodes'].to(dtype=torch.get_default_dtype(), device=device)
+        model_batch['src_index'] = batch['src_index'].to(device=device)
+        model_batch['dst_index'] = batch['dst_index'].to(device=device)
+        if batch.get('predict_mask') is not None:
+            model_batch['predict_mask'] = batch['predict_mask'].to(device=device)
+
+        if config.SCALE:
+            scalers = joblib.load(config.SCALER_FILE)
+            model_batch['nodes'] = scalers['input_scaler'].transform(model_batch['nodes'])
+            output_scaled = self.forward(model_batch)
+            return scalers['target_scaler'].inverse_transform(output_scaled)
+
+        return self.forward(model_batch)
+
+    @torch.no_grad()
+    def edge_messages(self, batch):
+        """
+        Run the edge function only and return raw messages alongside the (V_src, V_dst) inputs.
+        Used by :mod:`pysr_main` to harvest distillation targets for the learned force law.
+
+        :param batch: same dict layout as :meth:`forward`.
+        :return: tuple (edge_input, messages) of np.ndarrays. ``edge_input`` is shape
+            (B, M, 2 * F_in); ``messages`` is shape (B, M, msg_dim).
+        """
+        self.eval()
+        V = batch['nodes']
+        V_src = V.index_select(1, batch['src_index'])
+        V_dst = V.index_select(1, batch['dst_index'])
+        edge_input = torch.cat([V_src, V_dst], dim=-1)
+        messages = self.edge_model(edge_input)
+        return edge_input.cpu().numpy(), messages.cpu().numpy()
 
 
 @config.register('interp')

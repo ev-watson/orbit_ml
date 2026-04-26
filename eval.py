@@ -51,7 +51,9 @@ if args.skip_stage != 'random':
 
     if config.TYPE == 'interp':
         interp_test(model, ntrials=args.ntrials, mape=True)
-    else:
+    elif config.TYPE == 'gnn':
         gnn_test(model, ntrials=args.ntrials, batch_size=args.batch_size, mape=True, verbose=False, mean_axis=None)
+    else:
+        semlp_test(model, ntrials=args.ntrials, batch_size=args.batch_size, mape=True, verbose=False, mean_axis=None)
 else:
     print_block("SKIPPING RANDOM INPUT TESTING")

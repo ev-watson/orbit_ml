@@ -1,93 +1,153 @@
-import torch
-import glob
+import argparse
+
+import joblib
 import numpy as np
+import torch
 from scipy.integrate import solve_ivp
-from models import InterpMLP
+
 import config
+from models import MPNN
+from utils import print_block
 
 
-def calculate_force(r):
+def newton_force(r_vec, gm=config.GM_SUN):
     """
-    Newton force
-    :param r: array-like, radius in m
-    :return: Radial force component
+    Newtonian gravitational acceleration of a test body at displacement ``r_vec`` from the Sun.
+
+    :param r_vec: array-like of shape (3,), heliocentric position vector in meters.
+    :param gm: float, GM_sun in m^3 / s^2.
+    :return: np.ndarray of shape (3,), acceleration in m / s^2.
     """
-    G = 6.6743e-11  # Gravitational constant in m^3 kg^-1 s^-2
-    M_s = 1.988409870698051e30  # Mass of sun in kg
-    m = 0.3301e24  # Mass of mercury in kg
-    return -G * M_s * m / (r ** 2)
+    r = np.linalg.norm(r_vec)
+    return -gm * r_vec / r ** 3
 
 
-def get_L(x):
+def gnn_force(model, r_vec, v_vec,
+              merc_mass=config.M_MERC,
+              sun_mass=config.M_SUN,
+              scalers=None,
+              num_bodies=2):
     """
-    Gets theta component of angular momentum
-    :param x: list of [r, phi] in that order
-    :return: magnitude of the theta component of angular momentum
+    Acceleration on Mercury predicted by the trained message-passing GNN. Builds a single-snapshot
+    Sun + Mercury graph, scales it the way the model was trained, runs a forward pass, and pulls
+    Mercury's predicted acceleration row.
+
+    :param model: MPNN, the trained graph network in eval mode.
+    :param r_vec: array-like of shape (3,), Mercury heliocentric position (m).
+    :param v_vec: array-like of shape (3,), Mercury heliocentric velocity (m/s).
+    :param merc_mass: float, Mercury mass (kg).
+    :param sun_mass: float, Sun mass (kg).
+    :param scalers: dict, scaler bundle saved during training. None -> use raw values.
+    :param num_bodies: int, total bodies in the snapshot. Must match training topology.
+    :return: np.ndarray of shape (3,), predicted acceleration in m / s^2.
     """
-    model = InterpMLP.load_from_checkpoint(glob.glob('*.ckpt')[0])
-    v_phi_prediction = model.interp(x)
-    return np.abs(x[0] * v_phi_prediction)
+    snap = np.zeros((1, num_bodies, 7), dtype=np.float64)
+    snap[0, 0, 0] = sun_mass
+    snap[0, 1, 0] = merc_mass
+    snap[0, 1, 1:4] = r_vec
+    snap[0, 1, 4:7] = v_vec
+
+    device = next(model.parameters()).device
+    if scalers is not None:
+        snap_t = torch.from_numpy(snap).to(device=device, dtype=torch.get_default_dtype())
+        snap_t = scalers['input_scaler'].transform(snap_t)
+    else:
+        snap_t = torch.from_numpy(snap).to(device=device, dtype=torch.get_default_dtype())
+
+    src, dst = [], []
+    for i in range(num_bodies):
+        for j in range(num_bodies):
+            if i != j:
+                src.append(i)
+                dst.append(j)
+    batch = {
+        'nodes': snap_t,
+        'src_index': torch.tensor(src, dtype=torch.long, device=device),
+        'dst_index': torch.tensor(dst, dtype=torch.long, device=device),
+    }
+
+    with torch.no_grad():
+        pred_scaled = model(batch)                 # [1, B, 3] in scaled-acceleration space
+    if scalers is not None:
+        pred = scalers['target_scaler'].inverse_transform(pred_scaled)
+    else:
+        pred = pred_scaled
+    return pred[0, 1].cpu().numpy()                # Mercury row
 
 
-def ode_sys(phi, y):
-    m = 0.3301e24
-    r = 1 / y[0]
-    v_r = y[1]
-    L_theta = get_L([r, phi])
-    F_r = calculate_force(r)
-
-    dr_dphi = v_r
-    dv_r_dphi = -(m * F_r) / ((L_theta * y[0]) ** 2) - y[0] / L_theta + 2 * v_r ** 2 / y[0]
-
-    return [dr_dphi, dv_r_dphi]
-
-
-def y_limit_event(phi, y):
+def ode_rhs(t, y, force_fn):
     """
-    Event function to halt the integration if y exceeds the limits
+    Six-state RHS for a heliocentric Newtonian/GR-corrected orbit integration.
+    State vector ``y = [x, y, z, vx, vy, vz]``; the RHS applies the supplied ``force_fn``
+    (Newton or learned) at the current point.
+
+    :param t: float, time (unused; included for solve_ivp compatibility).
+    :param y: array-like of shape (6,), state vector.
+    :param force_fn: callable, takes (r_vec, v_vec) and returns acceleration of shape (3,).
+    :return: np.ndarray of shape (6,), dy/dt.
     """
-    if y[0] < 1.4e-11 or y[0] > 2.25e-11:
-        print(f"y_limit_event triggered at phi={phi}, y={y[0]}")
-        return 0
-    return 1
+    r = y[:3]
+    v = y[3:]
+    a = force_fn(r, v)
+    return np.concatenate([v, a])
 
 
-def dy_limit_event(phi, y):
+def initial_state(merc_csv=None):
     """
-    Event function to halt the integration if dy exceeds the limits
+    Pull Mercury's first heliocentric (x, y, z, vx, vy, vz) from the Horizons CSV used to build
+    the graph dataset. Falls back to a hard-coded perihelion-near initial condition if no CSV
+    path is supplied.
+
+    :param merc_csv: str, optional path to a Mercury Horizons CSV in
+        [JDTDB, X, Y, Z, VX, VY, VZ] form (km, km/s).
+    :return: np.ndarray of shape (6,) in meters / m/s.
     """
-    if y[1] < -1e-14 or y[1] > 1e-14:
-        print(f"dy_limit_event triggered at phi={phi}, dy={y[1]}")
-        return 0
-    return 1
+    if merc_csv is None:
+        # Mercury near aphelion in 1870, in heliocentric ICRF (m, m/s). Approximate placeholder.
+        return np.array([6.98e10, 0.0, 0.0, 0.0, 3.886e4, 0.0])
+    import pandas as pd
+    df = pd.read_csv(merc_csv)
+    row = df.iloc[0]
+    return np.array([row['X'], row['Y'], row['Z'], row['VX'], row['VY'], row['VZ']]) * 1000.0
 
-
-y_limit_event.terminal = True
-dy_limit_event.terminal = True
 
 if __name__ == "__main__":
-    y_0 = [1.667e-11, 0.5e-14]
-    phi_range = [-np.pi, np.pi]
+    parser = argparse.ArgumentParser(description="Orbit propagator using Newton or learned force law")
+    parser.add_argument('--mode', choices=['newton', 'gnn'], default='newton',
+                        help='Force law: analytic Newton or trained MPNN.')
+    parser.add_argument('--ckpt', type=str, default='tlogs/checkpoints/mpnn_final.ckpt',
+                        help='Checkpoint path for --mode gnn')
+    parser.add_argument('--scaler', type=str, default=config.SCALER_FILE,
+                        help='Scaler bundle path used during training (None to skip)')
+    parser.add_argument('--merc-csv', type=str, default=None,
+                        help='Mercury Horizons CSV; if given, supplies the initial condition')
+    parser.add_argument('--t-end', type=float, default=88 * 86400.0,
+                        help='Integration end time in seconds (default ~1 Mercury year)')
+    parser.add_argument('--n-out', type=int, default=20000,
+                        help='Number of output samples')
+    args = parser.parse_args()
 
-    solution = solve_ivp(
-        ode_sys,
-        phi_range,
-        y_0,
-        method='Radau',
-        # rtol=1e-3,
-        # atol=np.array([1e-15, 1e-18]),
-        #first_step=0.001,
-        #events=[y_limit_event, dy_limit_event],
-        dense_output=True,
-        t_eval=np.linspace(-np.pi+0.00001, np.pi-0.00001, 2400000),
+    if args.mode == 'newton':
+        force_fn = lambda r, v: newton_force(r)
+    else:
+        model = MPNN.load_from_checkpoint(args.ckpt)
+        model.eval()
+        scalers = joblib.load(args.scaler) if args.scaler else None
+        force_fn = lambda r, v: gnn_force(model, r, v, scalers=scalers)
+
+    y0 = initial_state(args.merc_csv)
+    t_span = (0.0, args.t_end)
+    t_eval = np.linspace(*t_span, args.n_out)
+    print_block(f"Integrating {args.mode} force law from t=0 to t={args.t_end:.3g} s")
+
+    sol = solve_ivp(
+        ode_rhs, t_span, y0, args=(force_fn,),
+        method='Radau', t_eval=t_eval, dense_output=True,
+        rtol=1e-9, atol=1e-3,
     )
 
-    phi_values = solution.t
-    r_values = 1 / solution.y[0]
-    v_r_values = solution.y[1]
-
-    print("Phi values:", phi_values)
-    print("Radial distances (r):", r_values)
-    print("dy/dphi:", v_r_values)
-    print(f"Solver status: {solution.status}")
-    print(f"Solver message: {solution.message}")
+    print(f"Solver status: {sol.status}")
+    print(f"Solver message: {sol.message}")
+    out = np.column_stack([sol.t, sol.y.T])
+    np.save(f"{config.ARTIFACTS_DIR}/integrated_{args.mode}.npy", out)
+    print_block(f"Saved trajectory to {config.ARTIFACTS_DIR}/integrated_{args.mode}.npy")

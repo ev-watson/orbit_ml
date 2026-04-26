@@ -163,7 +163,7 @@ class Orbit(ThreeDScene):
 
         self.camera.background_color = BLACK
 
-        df = prepare_data('horizons.csv')  # This processes Mercury's orbit data
+        df = prepare_data('data/horizons.csv')  # This processes Mercury's orbit data
 
         # list of points, with each point of the form [x, y, z]
         points = df[['X', 'Y', 'Z']].values

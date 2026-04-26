@@ -12,55 +12,46 @@ seed_everything(seed)
 torch.set_default_dtype(torch.float64) if not config.MAC else torch.set_default_dtype(torch.float32)
 
 params = {
-    'lr': 0.00045830946730129885,
-    'hidden_dim': 2048,
-    'num_layers': 5,
-    'se_block': True if not config.MAC else False,      # mac's MPS can't handle the SE Block
-    'se_reduction': 64,
-    'rotational_equivariance': True,
-    'windowed': False,
-    'drop_rate': 0.14152253394728245,
+    'lr': 5e-4,
+    # phi_e: edge function
+    'edge_hidden_dim': 256,
+    'edge_layers': 3,
+    # phi_v: node function
+    'node_hidden_dim': 256,
+    'node_layers': 3,
+    # message bottleneck (Cranmer): keep small for cleaner symbolic distillation
+    'msg_dim': 100,
+    'msg_l1': 1e-2,
+    # regularization carried over from the SEMLP baseline
+    'drop_rate': 0.1,
     'dropout_frequency': 3,
+    'se_block': True if not config.MAC else False,      # mac's MPS can't handle the SE Block
+    'se_reduction': 16,
     'loss': F.l1_loss,
-    # 'loss_kwargs': {
-    #     'beta': 1.6149167925554124,
-    # },
-    'activation': F.relu,
+    'activation': F.hardswish,
     'optimizer': optim.NAdam,
     'optimizer_kwargs': {
-        'betas': (0.9105880024486549, 0.9915574031641383),
-        'weight_decay': 3.7148597273862825e-09,
+        'betas': (0.9, 0.999),
+        'weight_decay': 1e-8,
         'eps': 1e-8,
-        'momentum_decay': 0.03288402439883893,
+        'momentum_decay': 4e-3,
         'decoupled_weight_decay': True,
     },
-    # 'scheduler': optim.lr_scheduler.CyclicLR,
-    # 'scheduler_kwargs': {
-    #     'base_lr': 7e-4,
-    #     'max_lr': .01,
-    #     'step_size_up': 2000,
-    #     'scale_fn': None,
-    #     'mode': 'triangular',   # only used if 'scale_fn' is None
-    #     'gamma': 1.0,   # only used if 'mode' = 'exp_range'
-    # },
     'scheduler_kwargs': {
-        'factor': 0.06603369129970485,
+        'factor': 0.1,
         'patience': 4,
     },
 }
 
 config.ON_STEP = False
-config.WINDOWED = params['windowed']
-config.ROTATIONAL_EQUIVARIANCE = params['rotational_equivariance']
-# config.SEQUENCE_LENGTH = 200
+# WINDOWED is meaningless for the graph network -- each snapshot is its own graph.
+config.WINDOWED = False
 
 config.update_hparams(params)
 
 data_module = NNDataModule(batch_size=16)
 
-model = GNN(
-    **params,
-)
+model = config.retrieve('model')(**params)
 
 trainer = Trainer(
     max_epochs=25,

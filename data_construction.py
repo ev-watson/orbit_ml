@@ -24,11 +24,15 @@ class InterpolationDataset(Dataset):
         return x, y
 
 
-@config.register('gnn')
-class GNNDataset(Dataset):
+@config.register('semlp')
+class SEMLPDataset(Dataset):
+    """
+    Legacy flat dataset for the MLP-with-SE baseline. Each sample is a single timestep's
+    feature vector, optionally a sliding window of timesteps if ``config.WINDOWED``.
+    """
     def __init__(self, features):
         super().__init__()
-        self.features = features  # [N, S, F]
+        self.features = features  # [N, F] or [N, S, F]
         self.input_dim = config.retrieve('model').input_dim
         self.output_dim = config.retrieve('model').output_dim
         self.windowed = config.WINDOWED
@@ -49,6 +53,34 @@ class GNNDataset(Dataset):
         return x, y
 
 
+@config.register('gnn')
+class GraphDataset(Dataset):
+    """
+    Per-snapshot graph dataset for the message-passing GNN. Each sample is the full N-body
+    state at a single timestamp, returned as a tuple ``(node_features, node_targets)`` where
+    ``node_features`` has shape (B, F_in) and ``node_targets`` has shape (B, F_out). The graph
+    topology is fully connected and shared across samples; the edge_index lives on the
+    DataModule, not the dataset.
+
+    :param features: np.ndarray of shape (T, B, F), the graph snapshot tensor produced by
+        :func:`utils.data_processing.build_graph_snapshots`.
+    """
+    def __init__(self, features):
+        super().__init__()
+        self.features = features  # [T, B, F]
+        self.input_slice = config.retrieve('model').input_slice
+        self.output_slice = config.retrieve('model').output_slice
+
+    def __len__(self):
+        return self.features.shape[0]
+
+    def __getitem__(self, idx):
+        snap = self.features[idx]                      # [B, F]
+        x = snap[..., self.input_slice]                # [B, F_in]
+        y = snap[..., self.output_slice]               # [B, F_out]
+        return x, y
+
+
 class NNDataModule(LightningDataModule):
     def __init__(self, batch_size=None):
         super().__init__()
@@ -59,16 +91,36 @@ class NNDataModule(LightningDataModule):
         self.input_slice = config.retrieve('model').input_slice
         self.target_slice = config.retrieve('model').output_slice
 
+        # Graph-network branch: per-snapshot multi-body data of shape [T, B, F]
         if config.TYPE == 'gnn':
-            if config.WINDOWED:
-                self.S = config.SEQUENCE_LENGTH
-                self.features = np.lib.stride_tricks.sliding_window_view(self.features,
-                                                                         window_shape=int(self.S),
-                                                                         axis=0)  # Shape [N-S+1, F, S]
-                self.features = self.features.transpose(0, 2, 1)  # [[N-S+1, S, F]
+            if self.features.ndim != 3:
+                raise ValueError(
+                    f"GraphDataset expects features with shape [T, B, F]; got {self.features.shape}. "
+                    f"Run utils.data_processing.build_graph_snapshots() to produce {config.GRAPH_FILE}."
+                )
+            self.num_bodies = self.features.shape[1]
+            self.src_index, self.dst_index = self._fully_connected_edges(self.num_bodies)
+            # By default predict every body's acceleration except the Sun's (held fixed at index 0).
+            self.predict_mask = torch.arange(1, self.num_bodies, dtype=torch.long)
 
             if config.ROTATIONAL_EQUIVARIANCE:
-                self.features = self.rotation(self.features)
+                self.features = self._rotation_augment(self.features)
+        else:
+            self.num_bodies = None
+            self.src_index = None
+            self.dst_index = None
+            self.predict_mask = None
+
+            # Legacy SEMLP / interp branches keep their original windowed + rotation hooks.
+            if config.TYPE == 'semlp':
+                if config.WINDOWED:
+                    self.S = config.SEQUENCE_LENGTH
+                    self.features = np.lib.stride_tricks.sliding_window_view(self.features,
+                                                                             window_shape=int(self.S),
+                                                                             axis=0)  # [N-S+1, F, S]
+                    self.features = self.features.transpose(0, 2, 1)  # [N-S+1, S, F]
+                if config.ROTATIONAL_EQUIVARIANCE:
+                    self.features = self.rotation(self.features)
 
         if config.MAC:  # MAC rejects float64
             self.features = self.features.astype(np.float32)
@@ -95,15 +147,55 @@ class NNDataModule(LightningDataModule):
         self.test_dataset = self.dataset(self.features[train_size + val_size:])
 
     @staticmethod
+    def _fully_connected_edges(num_bodies):
+        """
+        Build directed edge_index tensors for a fully connected graph of ``num_bodies`` nodes
+        (no self-loops). M = num_bodies * (num_bodies - 1) directed edges.
+
+        :param num_bodies: int.
+        :return: tuple (src_index, dst_index) of torch.LongTensor with shape (M,).
+        """
+        src, dst = [], []
+        for i in range(num_bodies):
+            for j in range(num_bodies):
+                if i != j:
+                    src.append(i)
+                    dst.append(j)
+        return (torch.tensor(src, dtype=torch.long),
+                torch.tensor(dst, dtype=torch.long))
+
+    @staticmethod
+    def _rotation_augment(graph_features):
+        """
+        Apply a single random SO(3) rotation to position, velocity, and acceleration columns of
+        every body in every snapshot. Mass column is invariant. Provides rotational data
+        augmentation in cartesian space; the network is not architecturally equivariant.
+
+        :param graph_features: np.ndarray of shape (T, B, F) with column order
+            [mass, x, y, z, vx, vy, vz, ax, ay, az].
+        :return: np.ndarray of the same shape with positions, velocities, and accelerations
+            rotated by a fresh random SO(3) matrix per snapshot.
+        """
+        out = graph_features.copy()
+        T = out.shape[0]
+        # uniformly sampled rotation matrices via QR of standard normal
+        A = np.random.normal(size=(T, 3, 3))
+        Q, _ = np.linalg.qr(A)
+        # Right-multiply each (B, 3) vector field block by the per-snapshot rotation Q[t].T
+        for blk in (slice(1, 4), slice(4, 7), slice(7, 10)):
+            v = out[..., blk]                  # [T, B, 3]
+            out[..., blk] = np.einsum('tbi,tij->tbj', v, Q)
+        return out
+
+    @staticmethod
     def rotation(data):
         """
-        Randomly assigns values for theta and phi, leaving velocities and accelerations untouched
-        effectively scrubbing theta and phi dependence while keeping angular velocity and acceleration dependence
+        Legacy SEMLP rotational augmentation: scrubs theta and phi while leaving derived
+        velocity / acceleration components untouched. Kept for backward compatibility with the
+        flat per-step datasets.
 
-        works for both windowed and non-windowed data
-
-        :param data: [..., F] shaped array where columns at index 2 and 3 are theta and phi respectively
-        :return: data-like array with random theta and phi
+        :param data: [..., F] shaped array where columns at index 2 and 3 are theta and phi.
+        :return: data-like array with random theta and phi.
         """
         x = data.copy()
         x[..., 2] = np.random.uniform(0, np.pi, size=x.shape[:-1])
@@ -111,23 +203,41 @@ class NNDataModule(LightningDataModule):
 
         return x
 
+    def _graph_collate(self, samples):
+        """
+        Stack per-snapshot (V, Y) pairs into a graph-batch dict and target tensor. The edge
+        topology is shared, so it lives on self and is broadcast at forward time.
+
+        :param samples: list of length B of tuples (V, Y) from GraphDataset.
+        :return: tuple (batch_dict, targets) where batch_dict carries 'nodes', 'src_index',
+            'dst_index', and 'predict_mask'; targets has shape (B, N, F_out).
+        """
+        Vs = torch.stack([torch.as_tensor(v, dtype=torch.get_default_dtype()) for v, _ in samples], dim=0)
+        Ys = torch.stack([torch.as_tensor(y, dtype=torch.get_default_dtype()) for _, y in samples], dim=0)
+        batch = {
+            'nodes': Vs,
+            'src_index': self.src_index,
+            'dst_index': self.dst_index,
+            'predict_mask': self.predict_mask,
+        }
+        return batch, Ys
+
+    def _make_loader(self, dataset, shuffle, batch_size=None):
+        kwargs = dict(
+            batch_size=batch_size if batch_size is not None else self.batch_size,
+            shuffle=shuffle,
+            num_workers=config.NUM_WORKERS,
+            pin_memory=config.PIN_MEMORY,
+        )
+        if config.TYPE == 'gnn':
+            kwargs['collate_fn'] = self._graph_collate
+        return DataLoader(dataset, **kwargs)
+
     def train_dataloader(self):
-        return DataLoader(self.train_dataset,
-                          batch_size=self.batch_size,
-                          shuffle=True,
-                          num_workers=config.NUM_WORKERS,
-                          pin_memory=config.PIN_MEMORY)
+        return self._make_loader(self.train_dataset, shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset,
-                          batch_size=self.batch_size,
-                          shuffle=False,
-                          num_workers=config.NUM_WORKERS,
-                          pin_memory=config.PIN_MEMORY)
+        return self._make_loader(self.val_dataset, shuffle=False)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset,
-                          batch_size=1,
-                          shuffle=False,
-                          num_workers=config.NUM_WORKERS,
-                          pin_memory=config.PIN_MEMORY)
+        return self._make_loader(self.test_dataset, shuffle=False, batch_size=1)

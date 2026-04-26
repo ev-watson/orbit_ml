@@ -101,13 +101,13 @@ loss_hyperparams = {
 
 parser = argparse.ArgumentParser(description="Hyper-optimization")
 optimizer_choices = list(optimizer_functions.keys())
-model_choices = ['interp', 'gnn']
+model_choices = ['interp', 'gnn', 'semlp']
 parser.add_argument("--opt", "-o", type=str, default="adamw",
                     choices=optimizer_choices,
                     help=f"Optimizer function. Defaults to adamw")
 parser.add_argument("--model", '-m', type=str, default='gnn',
                     choices=model_choices,
-                    help=f"Model to run. Defaults to gnn")
+                    help=f"Model to run. Defaults to gnn (the message-passing GNN)")
 args = parser.parse_args()
 config.TYPE = args.model
 
@@ -132,14 +132,28 @@ def objective(trial):
     # params['gradient_clip_val'] = trial.suggest_float('gradient_clip_val', 0.7, 1.5)
 
     # ARCHITECTURE
-    params['hidden_dim'] = trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024, 2048])
-    params['num_layers'] = trial.suggest_int('num_layers', 2, 8)
-    params['drop_rate'] = trial.suggest_float('drop_rate', 5e-3, 0.5)
-    params['dropout_frequency'] = trial.suggest_int('dropout_frequency', 1, params['num_layers'])
-    # params['se_block'] = trial.suggest_categorical('se_block', [True, False])
-    params['se_reduction'] = trial.suggest_categorical('se_reduction', [2, 4, 8, 16, 32, 64, 128])
-    # params['rotational_equivariance'] = trial.suggest_categorical('rotational_equivariance', [True, False])
-    # params['windowed'] = trial.suggest_categorical('windowed', [True, False])
+    if args.model == 'gnn':
+        # Message-passing GNN: separate widths/depths for the edge and node functions, plus
+        # the message bottleneck and L1 weight that drive Cranmer-style symbolic distillation.
+        params['edge_hidden_dim'] = trial.suggest_categorical(
+            'edge_hidden_dim', [64, 128, 256, 512, 1024])
+        params['edge_layers'] = trial.suggest_int('edge_layers', 2, 6)
+        params['node_hidden_dim'] = trial.suggest_categorical(
+            'node_hidden_dim', [64, 128, 256, 512, 1024])
+        params['node_layers'] = trial.suggest_int('node_layers', 2, 6)
+        params['msg_dim'] = trial.suggest_categorical('msg_dim', [16, 32, 64, 100, 128, 200])
+        params['msg_l1'] = trial.suggest_float('msg_l1', 1e-5, 1e-1, log=True)
+        deepest = max(params['edge_layers'], params['node_layers'])
+        params['drop_rate'] = trial.suggest_float('drop_rate', 5e-3, 0.5)
+        params['dropout_frequency'] = trial.suggest_int('dropout_frequency', 1, deepest)
+        params['se_reduction'] = trial.suggest_categorical(
+            'se_reduction', [2, 4, 8, 16, 32, 64, 128])
+    else:
+        params['hidden_dim'] = trial.suggest_categorical('hidden_dim', [32, 64, 128, 256, 512, 1024, 2048])
+        params['num_layers'] = trial.suggest_int('num_layers', 2, 8)
+        params['drop_rate'] = trial.suggest_float('drop_rate', 5e-3, 0.5)
+        params['dropout_frequency'] = trial.suggest_int('dropout_frequency', 1, params['num_layers'])
+        params['se_reduction'] = trial.suggest_categorical('se_reduction', [2, 4, 8, 16, 32, 64, 128])
 
     # ALGORITHMS
     # ---activation---
@@ -201,8 +215,10 @@ def objective(trial):
     rtrials = 921600
     if args.model == 'interp':
         mae, mape = interp_test(model, ntrials=rtrials, mape=True, err=True)
-    else:
+    elif args.model == 'gnn':
         mae, mape = gnn_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
+    else:
+        mae, mape = semlp_test(model, ntrials=rtrials, mape=True, err=True, mean_axis=None)
 
     return mae.item()
 
@@ -223,7 +239,7 @@ sampler = optuna.samplers.TPESampler(
 )
 
 study_name = f"{args.model}_{args.opt}_study"
-storage_name = f"sqlite:///{study_name}.db"
+storage_name = f"sqlite:///artifacts/{study_name}.db"
 study = optuna.create_study(direction='minimize',
                             storage=storage_name,
                             sampler=sampler,

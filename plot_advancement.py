@@ -129,9 +129,9 @@ def plot_advancement(daskdf, perihelion_indices=None, plot=True):
 
 
 if __name__ == '__main__':
-    df = dd.read_csv('horizons2000.csv', dtype=float, blocksize=300e6)  # Block size in bytes
+    df = dd.read_csv('data/horizons2000.csv', dtype=float, blocksize=300e6)  # Block size in bytes
     print_block("DATA LOADED")
     x_data, y_data, params, covar = plot_advancement(df)
-    np.save('x_data.npy', x_data)
-    np.save('y_data.npy', y_data)
+    np.save('data/x_data.npy', x_data)
+    np.save('data/y_data.npy', y_data)
     print(f'w: {params[1]} as/yr, Q: {params[2]} as/yr^2')

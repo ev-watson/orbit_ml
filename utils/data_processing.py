@@ -5,6 +5,9 @@ import numpy as np
 from astropy.time import Time
 from tqdm import tqdm
 
+import config
+from utils.numerical_methods import get_movements
+
 
 def find_observation_times(data):
     """
@@ -59,6 +62,78 @@ def convert_to_decimal_years(jdtbd_array, chunk_size=100000):
 
     progress_bar.close()
     return np.concatenate(decimal_years)
+
+
+def build_graph_snapshots(merc_csv,
+                          out_file=None,
+                          extra_bodies=None,
+                          merc_mass=config.M_MERC,
+                          sun_mass=config.M_SUN,
+                          chunk_size=400000,
+                          nrows=None,
+                          step=1):
+    """
+    Build per-timestep multi-body graph snapshots in the heliocentric frame for the message-passing
+    GNN. The Sun is body index 0 (held fixed at origin) and Mercury is body index 1; additional
+    bodies follow in the order given by ``extra_bodies``.
+
+    Each snapshot has shape (B, F) with column order
+    ``[mass, x, y, z, vx, vy, vz, ax, ay, az]``. The first 7 columns are model inputs, the last 3
+    are targets. The Sun's target row is held identically zero (treated as fixed in this frame).
+
+    Mercury accelerations are obtained from sixth-order spline differentiation of the Horizons
+    velocity timeseries (see :func:`utils.numerical_methods.get_movements`).
+
+    :param merc_csv: str, path to the Mercury Horizons CSV produced by data_init.py.
+        Must have columns [JDTDB, X, Y, Z, VX, VY, VZ] in km / km/s / Julian days.
+    :param out_file: str, output .npy path; defaults to ``config.GRAPH_FILE``.
+    :param extra_bodies: list of dict, optional additional bodies, each with keys
+        ``mass`` (kg) and ``csv`` (Horizons CSV in the same column convention as Mercury).
+        The N-body graph becomes 2 + len(extra_bodies) nodes wide.
+    :param merc_mass: float, Mercury mass (kg).
+    :param sun_mass: float, Sun mass (kg).
+    :param chunk_size: int, chunk size used for the JD -> decimal-year conversion.
+    :param nrows: int, optional row cap applied after loading.
+    :param step: int, optional row stride applied after loading.
+    :return: np.ndarray of shape (T, B, 10), the saved graph snapshot tensor.
+    """
+    out_file = out_file if out_file is not None else config.GRAPH_FILE
+    extra_bodies = extra_bodies or []
+
+    merc = load_np(out_file.replace('.npy', '_merc_raw.npy'),
+                   file_path=merc_csv,
+                   nrows=nrows,
+                   step=step,
+                   chunk_size=chunk_size)  # [T, 7] in seconds (decimal years) and m
+    merc_mov = get_movements(merc)  # [T, 10] -> [t, x, y, z, vx, vy, vz, ax, ay, az]
+    T = merc_mov.shape[0]
+
+    bodies = [merc_mov]
+    masses = [merc_mass]
+    for b in extra_bodies:
+        b_mov = get_movements(load_np(out_file.replace('.npy', f"_{b.get('name', 'body')}_raw.npy"),
+                                      file_path=b['csv'],
+                                      nrows=nrows,
+                                      step=step,
+                                      chunk_size=chunk_size))
+        if b_mov.shape[0] != T:
+            raise ValueError(f"Body {b.get('name')} has {b_mov.shape[0]} timestamps, expected {T}.")
+        bodies.append(b_mov)
+        masses.append(b['mass'])
+
+    B = 1 + len(bodies)  # +1 for Sun
+    snapshots = np.zeros((T, B, 10), dtype=np.float64)
+    snapshots[:, 0, 0] = sun_mass  # Sun mass column
+    # Sun stays at origin with zero velocity / acceleration in this frame.
+
+    for i, (mov, m) in enumerate(zip(bodies, masses), start=1):
+        snapshots[:, i, 0] = m              # mass
+        snapshots[:, i, 1:4] = mov[:, 1:4]  # x, y, z
+        snapshots[:, i, 4:7] = mov[:, 4:7]  # vx, vy, vz
+        snapshots[:, i, 7:10] = mov[:, 7:10]  # ax, ay, az
+
+    np.save(out_file, snapshots)
+    return snapshots
 
 
 def load_np(data_name, file_path=None, nrows=None, step=1, reload=True, chunk_size=400000):

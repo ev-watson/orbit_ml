@@ -1,7 +1,7 @@
 # numpy / data artifacts
 *.npy
 *.csv
-!version_1.csv
+!data/version_1.csv
 
 # compiled Python
 __pycache__/
@@ -30,14 +30,20 @@ studies/
 *.ckpt
 *.pkl
 *.db
+artifacts/
 
 # local dev / project management
 CLAUDE.md
 prompts/
 reference-sheets/
-get_ckpts.sh
-cleanup.sh
+scripts/get_ckpts.sh
+scripts/cleanup.sh
 media/
+backups/
 
 # result text files (regenerable)
 results_*.txt
+*.bkup
+
+# orphan plots
+*.png

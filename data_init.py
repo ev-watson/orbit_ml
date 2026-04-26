@@ -126,9 +126,9 @@ if __name__ == '__main__':
     # Fetch Earth data
     if args.object == 'earth':
         horizons = get_horizons(args.length, center_yr=args.center_yr, time_step='lowest', earth=True)
-        horizons.to_csv('earth_pos.csv', index=False)
+        horizons.to_csv('data/earth_pos.csv', index=False)
 
     # Fetch Mercury data
     if args.object == 'merc':
         horizons = get_horizons(args.length, center_yr=args.center_yr, time_step='lowest')
-        horizons.to_csv(f"{args.name}.csv", index=False)
+        horizons.to_csv(f"data/{args.name}.csv", index=False)

@@ -82,7 +82,7 @@ def print_best_optuna(db=None, pareto=False, single_pareto=None):
             print_block(f"Could not load study {study_name}. Exception: {e}", err=True)
         return None
     else:
-        studies = glob.glob('*study.db*')
+        studies = glob.glob('artifacts/*study.db*') + glob.glob('*study.db*')
         for study in studies:
             print_best_optuna(study, pareto=pareto, single_pareto=single_pareto)
         return None

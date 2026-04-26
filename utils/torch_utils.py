@@ -27,26 +27,29 @@ class Scaler:
         if not isinstance(data, np.ndarray):
             raise TypeError("Input data must be a NumPy array.")
 
-        if data.ndim == 3:
+        orig_dtype = data.dtype
+        data64 = data.astype(np.float64, copy=False)
+
+        if data64.ndim == 3:
             self.axes = (0, 1)  # Compute mean/std over N and S
-        elif data.ndim == 2:
+        elif data64.ndim == 2:
             self.axes = (0,)  # Compute mean/std over N
         else:
             raise ValueError("Data must be either 2D [N, F] or 3D [N, S, F].")
 
-        self.mean = data.mean(axis=self.axes)
-        self.std = data.std(axis=self.axes) + 1e-12  # Add epsilon to avoid division by zero
+        self.mean = data64.mean(axis=self.axes)
+        self.std = data64.std(axis=self.axes) + 1e-12  # Add epsilon to avoid division by zero
 
-        if data.ndim == 3:
+        if data64.ndim == 3:
             mean_reshaped = self.mean.reshape(1, 1, -1)  # Shape: [1, 1, F]
             std_reshaped = self.std.reshape(1, 1, -1)  # Shape: [1, 1, F]
-        elif data.ndim == 2:
+        elif data64.ndim == 2:
             mean_reshaped = self.mean.reshape(1, -1)  # Shape: [1, F]
             std_reshaped = self.std.reshape(1, -1)  # Shape: [1, F]
 
-        scaled_data = (data - mean_reshaped) / std_reshaped
+        scaled_data = (data64 - mean_reshaped) / std_reshaped
         self.is_fitted = True
-        return scaled_data
+        return scaled_data.astype(orig_dtype, copy=False)
 
     def transform(self, tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -115,10 +118,11 @@ class Scaler:
 class SEBlock(LightningModule):
     def __init__(self, channel, reduction=config.SE_REDUCTION):
         super(SEBlock, self).__init__()
+        bottleneck = max(channel // reduction, 1)
         self.se_block = nn.Sequential(
-            nn.Linear(channel, channel // reduction, bias=False),
+            nn.Linear(channel, bottleneck, bias=False),
             nn.ReLU(),
-            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Linear(bottleneck, channel, bias=False),
             nn.Sigmoid(),
         )
 
@@ -130,6 +134,83 @@ class SEBlock(LightningModule):
         y = self.se_block(y)
         y = y.unsqueeze(0)  # (1, channel)
         return x * y, y.squeeze(0)  # (batch_size, channel), (channel,)
+
+
+class MLPBlock(nn.Module):
+    """
+    Stacked-linear block used as the backbone of the message-passing GNN's edge and node functions.
+    Operates on the trailing feature axis, so the same module handles tensors shaped (B, F),
+    (B, N, F), or (B, M, F) interchangeably.
+
+    :param input_dim: int, number of input features.
+    :param hidden_dim: int, hidden width.
+    :param output_dim: int, output features.
+    :param num_layers: int, number of hidden Linear layers (excluding input/output projections).
+    :param activation: callable, activation function applied between layers.
+    :param drop_rate: float, dropout probability.
+    :param dropout_frequency: int, every X layers dropout is applied (smaller value = more dropout).
+    :param use_se: bool, whether to apply SE-style channel gating after every hidden layer.
+    :param se_reduction: int, SE bottleneck reduction factor.
+    """
+    def __init__(self,
+                 input_dim,
+                 hidden_dim,
+                 output_dim,
+                 num_layers=2,
+                 activation=None,
+                 drop_rate=0.0,
+                 dropout_frequency=1,
+                 use_se=False,
+                 se_reduction=config.SE_REDUCTION):
+        super().__init__()
+        self.activation = activation if activation is not None else nn.functional.hardswish
+        self.use_se = use_se
+        self.dropout_frequency = max(int(dropout_frequency), 1)
+
+        self.input_layer = nn.Linear(input_dim, hidden_dim)
+        self.hidden_layers = nn.ModuleList(
+            [nn.Linear(hidden_dim, hidden_dim) for _ in range(num_layers)]
+        )
+        self.output_layer = nn.Linear(hidden_dim, output_dim)
+        self.dropout_input = nn.Dropout(p=drop_rate)
+        self.dropouts = nn.ModuleList([nn.Dropout(p=drop_rate) for _ in range(num_layers)])
+        if self.use_se:
+            self.se_input = SEBlock(input_dim, reduction=se_reduction)
+            self.se_hidden = nn.ModuleList(
+                [SEBlock(hidden_dim, reduction=se_reduction) for _ in range(num_layers)]
+            )
+        self.attns = None  # last-channel-attention for logging
+
+    def forward(self, x):
+        if self.use_se:
+            x, attn_in = self.se_input(x)
+            self.attns = attn_in.detach().cpu().numpy()
+        x = self.activation(self.input_layer(x))
+        x = self.dropout_input(x)
+        for i, layer in enumerate(self.hidden_layers):
+            x = self.activation(layer(x))
+            if self.use_se:
+                x, _ = self.se_hidden[i](x)
+            if (i + 1) % self.dropout_frequency == 0:
+                x = self.dropouts[i](x)
+        return self.output_layer(x)
+
+
+def scatter_sum(messages, dst_index, num_nodes):
+    """
+    Sum messages into per-destination-node aggregates.
+
+    :param messages: torch.Tensor, shape (B, M, F): edge messages, B batches, M edges, F features.
+    :param dst_index: torch.LongTensor, shape (M,): destination node index for each edge,
+        shared across the batch (graph topology is identical batch-to-batch).
+    :param num_nodes: int, number of nodes per snapshot.
+    :return: torch.Tensor, shape (B, num_nodes, F): aggregated messages per destination node.
+    """
+    B, M, F = messages.shape
+    out = messages.new_zeros((B, num_nodes, F))
+    idx = dst_index.view(1, M, 1).expand(B, M, F)
+    out.scatter_add_(1, idx, messages)
+    return out
 
 
 class PredictorMixin:
